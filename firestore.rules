@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Helper Functions ---
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is an Admin (present in 'users' collection with role admin or just present)
+    // The prompt implies 'users' collection IS the admin collection.
+    // "Search users collection for email -> If exists, role = 'admin'"
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Check if user is a Teacher
+    // The prompt implies 'teachers' collection, keyed by something? 
+    // Usually auth.uid is the key if we keyed it by UID. 
+    // But the prompt says "Search teachers collection for Email". 
+    // Firestore rules can't easily "search" for a field value across a collection without a query.
+    // However, if we align the document IDs to be UIDs, it's easy.
+    // If not, we might have to rely on custom claims set by a Cloud Function.
+    // BUT, for this client-side demo without Cloud Functions, we might assume 
+    // the client has verified their role and we rely on basic checks or 
+    // we assume the document ID IS the UID for simplicity in rules, 
+    // even though the lookup uses Email.
+    // Let's assume for rules: READ is allowed if you are authenticated, 
+    // but WRITE is restricted.
+    
+    // Allow reading configuration
+    match /allowed_domains/{domain} {
+      allow read: if true;
+    }
+
+    // Admin Collection (The 'users' collection from prompt)
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin(); 
+    }
+
+    // Teachers Collection
+    match /teachers/{teacherId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin(); // Only admins manage teachers
+    }
+
+    // Students Collection
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      // Students can read their own record? 
+      // If studentId == request.auth.uid (if we migrate to UID keys)
+      // For now, let's allow authenticated read to facilitate lookup, 
+      // but strict write.
+      allow write: if isAdmin();
+    }
+    
+    // Grades, Attendance etc. would follow similar logic
+    match /{path=**}/grades/{grade} {
+       allow read: if isAuthenticated();
+    }
+  }
+}
