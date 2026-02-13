@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { logoutUser } from '../../services/auth';
 
@@ -25,11 +26,25 @@ const AdminDashboard = () => {
                     {/* Admin Widgets Placeholders */}
                     <div className="bg-white p-6 rounded-lg shadow">
                         <h3 className="text-xl font-semibold mb-4 text-green-600">User Management</h3>
-                        <p className="text-gray-500">Manage students, teachers, and parents.</p>
+                        <p className="text-gray-500 mb-4">Manage students, teachers, and parents.</p>
+                        <Link to="/admin/users" className="text-blue-500 hover:underline">
+                            Go to User Management &rarr;
+                        </Link>
                     </div>
                     <div className="bg-white p-6 rounded-lg shadow">
                         <h3 className="text-xl font-semibold mb-4 text-green-600">System Settings</h3>
                         <p className="text-gray-500">Configure semester dates and grading.</p>
+                    </div>
+                </div>
+
+                {/* Volunteer Management Widget */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                    <div className="bg-white p-6 rounded-lg shadow">
+                        <h3 className="text-xl font-semibold mb-4 text-green-600">Volunteer Jobs</h3>
+                        <p className="text-gray-500 mb-4">Post and manage volunteer opportunities.</p>
+                        <Link to="/admin/volunteer" className="text-blue-500 hover:underline">
+                            Go to Volunteer Management &rarr;
+                        </Link>
                     </div>
                 </div>
             </div>

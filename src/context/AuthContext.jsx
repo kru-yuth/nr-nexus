@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }) => {
             const adminQ = query(collection(db, "users"), where("email", "==", email.toLowerCase()));
             const adminSnap = await getDocs(adminQ);
             if (!adminSnap.empty) {
-                return { role: 'admin', data: adminSnap.docs[0].data() };
+                return { role: 'admin', data: { ...adminSnap.docs[0].data(), id: adminSnap.docs[0].id } };
             }
 
             // 2. Check Teacher (teachers)
@@ -39,14 +39,14 @@ export const AuthProvider = ({ children }) => {
             const teacherSnap = await getDocs(teacherQ);
             if (!teacherSnap.empty) {
                 // Ensure we don't accidentally match if email is undefined/null in db
-                return { role: 'teacher', data: teacherSnap.docs[0].data() };
+                return { role: 'teacher', data: { ...teacherSnap.docs[0].data(), id: teacherSnap.docs[0].id } };
             }
 
             // 3. Check Student (students)
             const studentQ = query(collection(db, "students"), where("Email", "==", email));
             const studentSnap = await getDocs(studentQ);
             if (!studentSnap.empty) {
-                return { role: 'student', data: studentSnap.docs[0].data() };
+                return { role: 'student', data: { ...studentSnap.docs[0].data(), id: studentSnap.docs[0].id } };
             }
 
             return { role: 'parent', data: null }; // Fallback

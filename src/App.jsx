@@ -5,8 +5,11 @@ import ProtectedRoute from './components/common/ProtectedRoute';
 // Pages
 import LoginPage from './modules/public/LoginPage';
 import AdminDashboard from './modules/admin/AdminDashboard';
+import UserManagement from './modules/admin/UserManagement';
+import VolunteerAdmin from './modules/admin/VolunteerAdmin';
 import TeacherDashboard from './modules/teacher/TeacherDashboard';
 import StudentDashboard from './modules/student/StudentDashboard';
+import VolunteerGallery from './modules/student/VolunteerGallery';
 import ParentDashboard from './modules/parent/ParentDashboard';
 
 function App() {
@@ -25,7 +28,11 @@ function App() {
             path="/admin/*"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <AdminDashboard />
+                <Routes>
+                  <Route path="/" element={<AdminDashboard />} />
+                  <Route path="/users" element={<UserManagement />} />
+                  <Route path="/volunteer" element={<VolunteerAdmin />} />
+                </Routes>
               </ProtectedRoute>
             }
           />
@@ -43,7 +50,10 @@ function App() {
             path="/student/*"
             element={
               <ProtectedRoute allowedRoles={['student']}>
-                <StudentDashboard />
+                <Routes>
+                  <Route path="/" element={<StudentDashboard />} />
+                  <Route path="/volunteer" element={<VolunteerGallery />} />
+                </Routes>
               </ProtectedRoute>
             }
           />

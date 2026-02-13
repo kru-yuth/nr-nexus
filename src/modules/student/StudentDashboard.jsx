@@ -22,6 +22,12 @@ const StudentDashboard = () => {
                     <h2 className="text-lg font-semibold mb-4">Current Grades</h2>
                     <div className="text-center py-8 text-gray-400">No grades available yet</div>
                 </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition cursor-pointer" onClick={() => window.location.href = '/student/volunteer'}>
+                    <h2 className="text-lg font-semibold mb-2 text-indigo-600">Volunteer Opportunities</h2>
+                    <p className="text-gray-500 mb-4">Browse and apply for volunteer jobs to earn points.</p>
+                    <button className="text-indigo-600 font-medium hover:underline">View Gallery &rarr;</button>
+                </div>
             </div>
         </div>
     );

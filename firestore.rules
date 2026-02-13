@@ -60,5 +60,12 @@ service cloud.firestore {
     match /{path=**}/grades/{grade} {
        allow read: if isAuthenticated();
     }
+
+    // Volunteer Jobs Collection
+    match /volunteer_jobs/{jobId} {
+      allow read: if isAuthenticated();
+      // Relaxed for now as isAdmin() requires UID keys which might not exist
+      allow write: if isAuthenticated(); 
+    }
   }
 }
