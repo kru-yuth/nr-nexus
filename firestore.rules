@@ -2,55 +2,61 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- Helper Functions ---
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Check if user has a specific role in their roles array
+    // Helper function to check roles in the 'users' collection
     function hasRole(role) {
-      return isAuthenticated() && 
+      return request.auth != null && 
              role in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles;
     }
 
-    // Check if user is an Admin
-    function isAdmin() {
-      return hasRole('admin');
+    // Helper to check if the user is active
+    function isActive() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
     }
 
-    // Check if user is a Teacher
-    function isTeacher() {
-      return hasRole('teacher') || isAdmin();
-    }
-
-    // --- Rules ---
-
-    // Unified Users Collection
+    // Users Collection
     match /users/{userId} {
-      // Users can read their own profile, Admins/Teachers can read all
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isTeacher());
+      // Allow reading your own document or if you are an admin
+      allow read: if request.auth != null && (request.auth.uid == userId || hasRole('admin'));
       
-      // Only Admins can create/delete/update users
-      // Note: We might allow users to update certain fields of their own profile later
-      allow write: if isAdmin();
+      // Allow initial UID linking: If email matches and document exists
+      // This is for the setDoc(doc(db, "users", uid), ...) part
+      allow create, update: if request.auth != null && (
+        request.auth.uid == userId || 
+        hasRole('admin') ||
+        (request.resource.data.email == request.auth.token.email && 
+         (!exists(/databases/$(database)/documents/users/$(userId)) || 
+          get(/databases/$(database)/documents/users/$(userId)).data.email == request.auth.token.email))
+      );
+      
+      allow delete: if hasRole('admin');
     }
 
-    // Volunteer Jobs Collection
+    // NR-Nexus: Volunteer Jobs
     match /volunteer_jobs/{jobId} {
-      allow read: if isAuthenticated();
-      // Only Admins and Teachers can manage jobs
-      allow write: if isTeacher();
+      allow read: if request.auth != null;
+      allow write: if hasRole('admin') || hasRole('teacher');
     }
 
-    // Configurations/Allowed Domains
-    match /allowed_domains/{domain} {
-      allow read: if true;
-      allow write: if isAdmin();
+    // NR-Electricity-Stats: Electricity Records
+    match /electricity_records/{recordId} {
+      allow read: if true; // Dashboard is public
+      allow create: if request.auth != null && isActive();
+      allow update, delete: if hasRole('admin') || 
+                            (resource.data.created_by == request.auth.uid);
     }
 
-    // Generic match for any other collections (Global Deny or specific rules)
-    // Deprecated collections like 'teachers' or 'students' will fall here
-    match /teachers/{docId} { allow read, write: if false; }
-    match /students/{docId} { allow read, write: if false; }
+    // Waste-Management-System: Waste Records
+    match /waste_records/{recordId} {
+      allow read: if true; // Dashboard is public
+      allow create: if request.auth != null && isActive();
+      allow update, delete: if hasRole('admin') || 
+                            (resource.data.created_by == request.auth.uid);
+    }
+
+    // Global default: deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
