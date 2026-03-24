@@ -1,50 +1,42 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import { logoutUser } from '../../services/auth';
+import { useLanguage } from '../../context/LanguageContext';
+import Navbar from '../../components/common/Navbar';
 
 const AdminDashboard = () => {
-    const { user } = useAuth();
+    const { t } = useLanguage();
 
     return (
-        <div className="min-h-screen bg-gray-100 p-8">
-            <div className="max-w-7xl mx-auto">
+        <div className="min-h-screen bg-gray-100">
+            <Navbar />
+            <div className="max-w-7xl mx-auto p-8">
                 <div className="bg-white rounded-lg shadow p-6 mb-8 flex justify-between items-center">
-                    <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
-                    <div className="flex items-center gap-4">
-                        <span className="text-gray-600">Welcome, {user?.displayName}</span>
-                        <button
-                            onClick={logoutUser}
-                            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition"
-                        >
-                            Logout
-                        </button>
-                    </div>
+                    <h1 className="text-3xl font-bold text-gray-800">{t('admin_dashboard')}</h1>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Admin Widgets Placeholders */}
+                    {/* User Management Widget */}
                     <div className="bg-white p-6 rounded-lg shadow">
-                        <h3 className="text-xl font-semibold mb-4 text-green-600">User Management</h3>
-                        <p className="text-gray-500 mb-4">Manage students, teachers, and parents.</p>
-                        <Link to="/admin/users" className="text-blue-500 hover:underline">
-                            Go to User Management &rarr;
+                        <h3 className="text-xl font-semibold mb-4 text-green-600">{t('user_management')}</h3>
+                        <p className="text-gray-500 mb-4">{t('user_mgmt_desc')}</p>
+                        <Link to="/admin-dashboard/users" className="text-blue-500 hover:underline">
+                            {t('go_to_user_mgmt')} &rarr;
                         </Link>
                     </div>
-                    <div className="bg-white p-6 rounded-lg shadow">
-                        <h3 className="text-xl font-semibold mb-4 text-green-600">System Settings</h3>
-                        <p className="text-gray-500">Configure semester dates and grading.</p>
-                    </div>
-                </div>
 
-                {/* Volunteer Management Widget */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                    {/* Volunteer Management Widget */}
                     <div className="bg-white p-6 rounded-lg shadow">
-                        <h3 className="text-xl font-semibold mb-4 text-green-600">Volunteer Jobs</h3>
-                        <p className="text-gray-500 mb-4">Post and manage volunteer opportunities.</p>
-                        <Link to="/admin/volunteer" className="text-blue-500 hover:underline">
-                            Go to Volunteer Management &rarr;
+                        <h3 className="text-xl font-semibold mb-4 text-green-600">{t('volunteer_management')}</h3>
+                        <p className="text-gray-500 mb-4">{t('post_job_desc')}</p>
+                        <Link to="/admin-dashboard/volunteer" className="text-blue-500 hover:underline">
+                            {t('go_to_volunteer_mgmt')} &rarr;
                         </Link>
+                    </div>
+
+                    {/* System Settings Widget (Placeholder) */}
+                    <div className="bg-white p-6 rounded-lg shadow">
+                        <h3 className="text-xl font-semibold mb-4 text-green-600">{t('system_settings')}</h3>
+                        <p className="text-gray-500">{t('system_settings_desc')}</p>
                     </div>
                 </div>
             </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../services/firebase';
-import { collection, addDoc, getDocs, updateDoc, doc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, doc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 
 const VolunteerAdmin = () => {

@@ -1,18 +1,16 @@
 import React from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { logoutUser } from '../../services/auth';
+import { useLanguage } from '../../context/LanguageContext';
+import Navbar from '../../components/common/Navbar';
 
 const ParentDashboard = () => {
-    const { user } = useAuth();
+    const { t } = useLanguage();
 
     return (
-        <div className="min-h-screen bg-green-50 p-6">
-            <div className="max-w-5xl mx-auto">
+        <div className="min-h-screen bg-green-50">
+            <Navbar />
+            <div className="max-w-5xl mx-auto p-6">
                 <div className="flex justify-between items-center mb-8">
-                    <h1 className="text-3xl font-bold text-green-900">Parent Portal</h1>
-                    <button onClick={logoutUser} className="bg-white text-green-900 px-6 py-2 rounded-full shadow hover:shadow-md transition">
-                        Log Out
-                    </button>
+                    <h1 className="text-3xl font-bold text-green-900">{t('dashboard')} (Parent)</h1>
                 </div>
 
                 <div className="bg-white rounded-2xl p-8 shadow-sm">

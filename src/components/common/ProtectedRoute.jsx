@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-    const { user, role, loading } = useAuth();
+    const { user, roles, loading } = useAuth();
     const location = useLocation();
 
     if (loading) {
@@ -17,9 +17,11 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    if (allowedRoles && !allowedRoles.includes(role)) {
+    // Multi-role check
+    const hasAccess = allowedRoles ? roles.some(role => allowedRoles.includes(role)) : true;
+
+    if (!hasAccess) {
         // Redirect to their appropriate dashboard if they try to access unauthorized page
-        // Or a generic unauthorized page
         return <Navigate to="/" replace />;
     }
 

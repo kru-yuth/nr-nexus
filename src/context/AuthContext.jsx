@@ -1,92 +1,106 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { auth, db } from "../services/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { auth } from "../services/firebase";
+import {
+    onAuthStateChanged,
+    signOut
+} from 'firebase/auth';
+import { loginWithGoogle, fetchUserByEmailAndLinkUID } from '../services/auth';
 
 const AuthContext = createContext();
+export const useAuth = () => useContext(AuthContext);
 
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error("useAuth must be used within an AuthProvider");
-    }
-    return context;
-};
-
-export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [role, setRole] = useState(null);
-    const [profileData, setProfileData] = useState(null);
+export function AuthProvider({ children }) {
+    const [currentUser, setCurrentUser] = useState(null);
+    const [userRoles, setUserRoles] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [authError, setAuthError] = useState(null);
 
-    // Re-implement lookup logic here for page refreshes (auto-login)
-    // Since onAuthStateChanged only gives the Firebase User, we need to re-fetch the role.
-    const fetchUserRole = async (firebaseUser) => {
-        const email = firebaseUser.email;
-        let foundRole = 'parent';
-        let foundData = null;
+    const login = async () => {
+        setAuthError(null);
+        localStorage.clear();
+        sessionStorage.clear();
 
         try {
-            // 1. Check Admin (users)
-            const adminQ = query(collection(db, "users"), where("email", "==", email.toLowerCase()));
-            const adminSnap = await getDocs(adminQ);
-            if (!adminSnap.empty) {
-                return { role: 'admin', data: { ...adminSnap.docs[0].data(), id: adminSnap.docs[0].id } };
+            const user = await loginWithGoogle();
+
+            if (user.email.endsWith('@nr.ac.th')) {
+                // Strict Email-based Lookup (Unified Flow)
+                console.log(`Login: Searching whitelisted user for ${user.email}...`);
+                const userData = await fetchUserByEmailAndLinkUID(user.email, user.uid);
+
+                if (userData && userData.roles && userData.roles.length > 0) {
+                    console.log("Login: User verified via email lookup and linked.");
+                    setCurrentUser(user);
+                    setUserRoles(userData.roles);
+                    return { user, roles: userData.roles };
+                } else {
+                    console.error("Login: Email not found in whitelist. Signing out.");
+                    await signOut(auth);
+                    setCurrentUser(null);
+                    setUserRoles([]);
+                    setAuthError("whitelist_error");
+                    return null;
+                }
+            } else {
+                await signOut(auth);
+                setAuthError("domain_error");
+                return null;
             }
 
-            // 2. Check Teacher (teachers)
-            const teacherQ = query(collection(db, "teachers"), where("Email", "==", email));
-            const teacherSnap = await getDocs(teacherQ);
-            if (!teacherSnap.empty) {
-                // Ensure we don't accidentally match if email is undefined/null in db
-                return { role: 'teacher', data: { ...teacherSnap.docs[0].data(), id: teacherSnap.docs[0].id } };
+        } catch (error) {
+            console.error("Login Context Error:", error);
+            if (error.message === 'Unauthorized domain') {
+                setAuthError("domain_error");
+            } else if (!authError) {
+                setAuthError("login_error");
             }
-
-            // 3. Check Student (students)
-            const studentQ = query(collection(db, "students"), where("Email", "==", email));
-            const studentSnap = await getDocs(studentQ);
-            if (!studentSnap.empty) {
-                return { role: 'student', data: { ...studentSnap.docs[0].data(), id: studentSnap.docs[0].id } };
-            }
-
-            return { role: 'parent', data: null }; // Fallback
-
-        } catch (err) {
-            console.error("Error fetching user role on refresh:", err);
-            return { role: 'parent', data: null };
+            throw error;
         }
     };
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            if (firebaseUser) {
-                // Determine role again
-                const { role: fetchedRole, data: fetchedData } = await fetchUserRole(firebaseUser);
-                setUser(firebaseUser);
-                setRole(fetchedRole);
-                setProfileData(fetchedData);
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user && user.email.endsWith('@nr.ac.th')) {
+                setCurrentUser(user);
+                try {
+                    // Always try to fetch latest roles/status
+                    const userData = await fetchUserByEmailAndLinkUID(user.email, user.uid);
+                    if (userData && userData.roles && userData.roles.length > 0) {
+                        setUserRoles(userData.roles);
+                    } else {
+                        console.warn("Session restore: User not in whitelist. Signing out.");
+                        await signOut(auth);
+                        setCurrentUser(null);
+                        setUserRoles([]);
+                    }
+                } catch (e) {
+                    console.error("Auth Listener Fetch Error:", e);
+                    if (e.code === 'permission-denied') {
+                        setAuthError("permission_error");
+                    }
+                }
             } else {
-                setUser(null);
-                setRole(null);
-                setProfileData(null);
+                setCurrentUser(null);
+                setUserRoles([]);
             }
             setLoading(false);
         });
-
         return unsubscribe;
     }, []);
 
     const value = {
-        user,
-        role,
-        profileData,
+        user: currentUser,
+        roles: userRoles,
+        role: userRoles[0] || null, // For backward compatibility
         loading,
-        isAuthenticated: !!user,
+        authError,
+        login,
+        logout: () => {
+            localStorage.clear();
+            sessionStorage.clear();
+            return signOut(auth);
+        }
     };
 
-    return (
-        <AuthContext.Provider value={value}>
-            {!loading && children}
-        </AuthContext.Provider>
-    );
-};
+    return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
+}

@@ -1,19 +1,16 @@
 import React from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { logoutUser } from '../../services/auth';
+import { useLanguage } from '../../context/LanguageContext';
+import Navbar from '../../components/common/Navbar';
 
 const TeacherDashboard = () => {
-    const { user } = useAuth();
+    const { t } = useLanguage();
 
     return (
-        <div className="min-h-screen bg-gray-100 p-8">
-            <div className="max-w-7xl mx-auto">
+        <div className="min-h-screen bg-gray-100">
+            <Navbar />
+            <div className="max-w-7xl mx-auto p-8">
                 <div className="bg-white rounded-lg shadow p-6 mb-8 flex justify-between items-center">
-                    <h1 className="text-3xl font-bold text-gray-800">Teacher Workspace</h1>
-                    <div className="flex items-center gap-4">
-                        <span className="text-gray-600">{user?.displayName}</span>
-                        <button onClick={logoutUser} className="text-red-500 hover:text-red-700 font-medium">Logout</button>
-                    </div>
+                    <h1 className="text-3xl font-bold text-gray-800">{t('dashboard')} (Teacher)</h1>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
