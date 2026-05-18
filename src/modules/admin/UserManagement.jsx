@@ -8,10 +8,27 @@ import {
     bulkAddUsers,
     bulkUpdateUserStatus,
     bulkDeleteUsers,
+    promoteLevel
 } from '../../services/userService';
 import { useLanguage } from '../../context/LanguageContext';
 import Navbar from '../../components/common/Navbar';
 import ConfirmationModal from '../../components/common/ConfirmationModal';
+import { 
+    Search, 
+    UserPlus, 
+    Upload, 
+    Trash2, 
+    Edit3, 
+    Eye, 
+    ShieldCheck, 
+    Filter,
+    CheckCircle2,
+    AlertCircle,
+    MoreHorizontal,
+    GraduationCap,
+    Clock,
+    X
+} from 'lucide-react';
 
 const UserManagement = () => {
     const { t } = useLanguage();
@@ -32,17 +49,16 @@ const UserManagement = () => {
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [userToEdit, setUserToEdit] = useState(null);
     const [formData, setFormData] = useState({
-        name: '', email: '', roles: ['student'], class: '',
+        name: '', email: '', roles: ['student'], permissions: [], class: '',
         batchYear: new Date().getFullYear().toString(), status: 'active',
         level: '', gender: ''
     });
 
-    // Delete Confirmation Modal State
+    // Confirmation Modals
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
     const [isDeleting, setIsDeleting] = useState(false);
     
-    // Status Update Confirmation Modal State
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
     const [statusToUpdate, setStatusToUpdate] = useState(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -64,33 +80,49 @@ const UserManagement = () => {
         }
     };
 
-    const filteredUsers = users.filter((user) => {
-        const searchText = searchTerm.toLowerCase();
-        const matchesSearch = 
-            (user.name || '').toLowerCase().includes(searchText) ||
-            (user.email || '').toLowerCase().includes(searchText);
-        const matchesRole = filterRole === 'all' || (user.roles && user.roles.includes(filterRole));
-        const matchesStatus = filterStatus === 'all' || user.status === filterStatus;
-        const matchesClass = filterClass === 'all' || (user.class && user.class.toString().toLowerCase().trim() == filterClass.toLowerCase().trim());
-        const matchesLevel = filterLevel === 'all' || (user.level && user.level.toString().toLowerCase().trim() == filterLevel.toLowerCase().trim());
-        const matchesGender = filterGender === 'all' || (user.gender && user.gender.toString().toLowerCase().trim() == filterGender.toLowerCase().trim());
-        
-        return matchesSearch && matchesRole && matchesStatus && matchesClass && matchesLevel && matchesGender;
+    // --- CONSOLIDATED STRICT FILTERING ---
+    const filteredUsers = (users || []).filter((u) => {
+        // 1. Search
+        const search = searchTerm.toLowerCase().trim();
+        if (search && !((u.name || '').toLowerCase().includes(search) || (u.email || '').toLowerCase().includes(search))) return false;
+
+        // 2. Role
+        if (filterRole !== 'all') {
+            if (!u.roles?.some(r => r.toLowerCase() === filterRole.toLowerCase())) return false;
+        }
+
+        // 3. Status
+        if (filterStatus !== 'all' && (u.status || '').toLowerCase() !== filterStatus.toLowerCase()) return false;
+
+        // 4. Level (Normalized for combinable filtering)
+        const normLvl = (v) => String(v || '').replace(/[^0-9]/g, '').trim();
+        if (filterLevel !== 'all' && normLvl(u.level) !== normLvl(filterLevel)) return false;
+
+        // 5. Class/Room (Normalized for combinable filtering)
+        const normRoom = (v) => String(v || '').split('/').pop().replace(/[^0-9]/g, '').trim();
+        if (filterClass !== 'all' && normRoom(u.class) !== normRoom(filterClass)) return false;
+
+        // 6. Gender (Inference Logic Integrated)
+        if (filterGender !== 'all') {
+            let uG = String(u.gender || '').toLowerCase().trim();
+            if (!uG) {
+                const name = String(u.name || '');
+                if (name.startsWith('เด็กชาย') || name.startsWith('นาย')) uG = 'ชาย';
+                else if (name.startsWith('เด็กหญิง') || name.startsWith('นางสาว') || name.startsWith('นาง')) uG = 'หญิง';
+            }
+            const gMap = { 'ชาย': ['ชาย', 'male', 'm'], 'หญิง': ['หญิง', 'female', 'f'] };
+            if (!(uG === filterGender || (gMap[filterGender] && gMap[filterGender].includes(uG)))) return false;
+        }
+
+        return true;
     });
 
     const handleSelectRow = (id) => {
-        setSelectedIds(prev =>
-            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-        );
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
     };
 
     const handleSelectAll = (e) => {
-        if (e.target.checked) {
-            const filteredUserIds = filteredUsers.map(u => u.id);
-            setSelectedIds(filteredUserIds);
-        } else {
-            setSelectedIds([]);
-        }
+        setSelectedIds(e.target.checked ? filteredUsers.map(u => u.id) : []);
     };
 
     const handleEdit = (user) => {
@@ -99,6 +131,7 @@ const UserManagement = () => {
             name: user.name || '',
             email: user.email || '',
             roles: user.roles || ['student'],
+            permissions: user.permissions || [],
             class: user.class || '',
             batchYear: user.batchYear || '',
             status: user.status || 'active',
@@ -115,7 +148,7 @@ const UserManagement = () => {
 
     const handleStatusUpdateRequest = (status) => {
         if (selectedIds.length === 0) {
-            toast.error("Please select users to update.");
+            toast.error("Please select users first.");
             return;
         };
         setStatusToUpdate(status);
@@ -125,409 +158,490 @@ const UserManagement = () => {
     const confirmDelete = async () => {
         if (!userToDelete) return;
         setIsDeleting(true);
-        const toastId = toast.loading('Deleting user(s)...');
+        const toastId = toast.loading('Purging records...');
         try {
-            if (Array.isArray(userToDelete)) {
-                await bulkDeleteUsers(userToDelete);
-                toast.success(`Successfully deleted ${userToDelete.length} users.`, { id: toastId });
-                setSelectedIds([]);
-            } else {
-                await deleteUser(userToDelete);
-                toast.success('User deleted successfully.', { id: toastId });
-            }
-            setUserToDelete(null);
+            if (Array.isArray(userToDelete)) await bulkDeleteUsers(userToDelete);
+            else await deleteUser(userToDelete);
+            toast.success('Records purged!', { id: toastId });
+            setSelectedIds([]);
             setIsDeleteModalOpen(false);
             loadUsers();
         } catch (error) {
-            console.error("Failed to delete user(s):", error);
-            toast.error("Failed to delete user(s).", { id: toastId });
+            toast.error('Purge failed.', { id: toastId });
         } finally {
             setIsDeleting(false);
         }
     };
-    
+
     const confirmStatusUpdate = async () => {
-        if (selectedIds.length === 0 || !statusToUpdate) return;
-        
         setIsUpdatingStatus(true);
-        const toastId = toast.loading(`Updating status to ${statusToUpdate}...`);
         try {
             await bulkUpdateUserStatus(selectedIds, statusToUpdate);
-            toast.success("Users updated successfully!", { id: toastId });
+            toast.success(`Updated to ${statusToUpdate}`);
             setSelectedIds([]);
-            setStatusToUpdate(null);
             setIsStatusModalOpen(false);
-            await loadUsers();
+            loadUsers();
         } catch (error) {
-            console.error("Bulk update failed:", error);
-            toast.error("Failed to update users.", { id: toastId });
+            toast.error('Update failed');
         } finally {
             setIsUpdatingStatus(false);
         }
     };
 
-    const handleChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        if (type === 'checkbox' && name === 'roles') {
-            const updatedRoles = checked
-                ? [...formData.roles, value]
-                : formData.roles.filter(r => r !== value);
-            setFormData(prev => ({ ...prev, roles: updatedRoles }));
-        } else {
-            setFormData(prev => ({ ...prev, [name]: value }));
-        }
-    };
-
     const handleFormSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.email.includes('@')) {
-            toast.error("Valid email is required");
-            return;
-        }
-
-        const isEditing = !!userToEdit;
-        const toastId = toast.loading(isEditing ? 'Updating user...' : 'Adding user...');
         setLoading(true);
-
         try {
-            const userData = {
-                displayName: formData.name,
-                email: formData.email,
-                roles: formData.roles,
-                class: formData.class,
-                batchYear: formData.batchYear,
-                status: formData.status,
-                level: formData.level,
-                gender: formData.gender
-            };
-
-            if (isEditing) {
-                await updateUser(userToEdit.id, userData);
-                toast.success('User updated successfully!', { id: toastId });
-            } else {
-                await addNewUser({ name: formData.name, ...userData });
-                toast.success('User added successfully!', { id: toastId });
-            }
+            if (userToEdit) await updateUser(userToEdit.id, formData);
+            else await addNewUser(formData);
+            toast.success('Database updated!');
             setIsFormModalOpen(false);
             loadUsers();
         } catch (error) {
-            console.error("Form submission failed:", error);
-            toast.error("Form submission failed.", { id: toastId });
+            toast.error('Operation failed');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const [isPromoteModalOpen, setIsPromoteModalOpen] = useState(false);
+    const [isPromoting, setIsPromoting] = useState(false);
+
+    const handlePromotionLevel = async (from, to) => {
+        if (!window.confirm(`Promote all students from ${from} to ${to}?`)) return;
+        
+        setIsPromoting(true);
+        const toastId = toast.loading(`Transitioning ${from} to ${to}...`);
+        try {
+            const count = await promoteLevel(from, to);
+            toast.success(`Successfully transitioned ${count} students!`, { id: toastId });
+            setIsPromoteModalOpen(false); // Auto-close on success
+            loadUsers();
+        } catch (error) {
+            toast.error('Transition failed: ' + error.message, { id: toastId });
+        } finally {
+            setIsPromoting(false);
         }
     };
 
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         setIsImporting(true);
-        const toastId = toast.loading('Importing CSV file...');
         const reader = new FileReader();
-        reader.onload = async (event) => {
+        reader.onload = async (ev) => {
             try {
-                const text = event.target.result;
-                const lines = text.split('\n').filter(line => line.trim());
-                if (lines.length <= 1) {
-                    throw new Error("CSV is empty or has only a header.");
+                const text = ev.target.result;
+                const allRows = text.split(/\r?\n/).filter(l => l.trim());
+                if (allRows.length < 2) {
+                    toast.error('CSV file is empty or missing data.');
+                    return;
                 }
-                
-                const dataToImport = lines.slice(1).map(line => {
-                    const values = line.split(',');
-                    return {
-                        name: values[0]?.trim(),
-                        email: values[1]?.trim(),
-                        class: values[2]?.trim() || '',
-                        batchYear: values[3]?.trim() || '',
-                        level: values[4]?.trim() || '',
-                        gender: values[5]?.trim() || '',
-                        roles: ['student'],
-                        status: 'active'
+
+                const headerRow = allRows[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+                const dataRows = allRows.slice(1);
+
+                // Helper to find column index by multiple possible names
+                const findIdx = (possibleNames) => {
+                    return headerRow.findIndex(h => possibleNames.includes(h));
+                };
+
+                const idx = {
+                    email: findIdx(['email', 'อีเมล']),
+                    studentId: findIdx(['studentid', 'รหัสนักเรียน', 'student_id']),
+                    prefix: findIdx(['prefix', 'คำนำหน้า', 'title']),
+                    firstName: findIdx(['firstname', 'ชื่อ', 'first_name']),
+                    lastName: findIdx(['lastname', 'นามสกุล', 'last_name']),
+                    name: findIdx(['name', 'ชื่อ-นามสกุล', 'fullname', 'displayname']),
+                    gender: findIdx(['gender', 'เพศ']),
+                    level: findIdx(['level', 'ชั้น', 'ระดับชั้น']),
+                    class: findIdx(['class', 'ห้อง', 'class_room', 'room']),
+                    citizenId: findIdx(['citizenid', 'เลขประจำตัวประชาชน', 'citizen_id'])
+                };
+
+                const data = dataRows.map(r => {
+                    // Handle quoted commas properly if needed, but simple split for now
+                    const v = r.split(',').map(field => field.trim().replace(/^"|"$/g, ''));
+                    
+                    const getVal = (i) => (i !== -1 && v[i]) ? v[i] : '';
+
+                    let email = getVal(idx.email);
+                    let studentId = getVal(idx.studentId);
+                    let prefix = getVal(idx.prefix);
+                    let firstName = getVal(idx.firstName);
+                    let lastName = getVal(idx.lastName);
+                    let fullName = getVal(idx.name);
+                    let gender = getVal(idx.gender);
+                    let level = getVal(idx.level);
+                    let room = getVal(idx.class);
+                    let citizenId = getVal(idx.citizenId);
+
+                    // 1. Infer Gender/Prefix if missing
+                    const infer = (p, n) => {
+                        const combined = (p || '') + (n || '');
+                        if (combined.startsWith('เด็กชาย') || combined.startsWith('นาย')) return { g: 'ชาย', p: p || (combined.startsWith('นาย') ? 'นาย' : 'เด็กชาย') };
+                        if (combined.startsWith('เด็กหญิง') || combined.startsWith('นางสาว') || combined.startsWith('นาง')) return { g: 'หญิง', p: p || (combined.startsWith('นางสาว') ? 'นางสาว' : (combined.startsWith('นาง') ? 'นาง' : 'เด็กหญิง')) };
+                        return { g: '', p: p };
                     };
-                });
 
-                if (dataToImport.some(d => !d.name || !d.email)) {
-                    throw new Error("Some rows are missing required 'name' or 'email' values.");
+                    const inferred = infer(prefix, firstName || fullName);
+                    if (!gender) gender = inferred.g;
+                    if (!prefix) prefix = inferred.p;
+
+                    // 2. Construct Full Name if missing or incomplete
+                    if (!fullName) {
+                        fullName = `${prefix}${firstName} ${lastName}`.trim();
+                    } else if (prefix && !fullName.startsWith(prefix)) {
+                        fullName = `${prefix}${fullName}`.trim();
+                    }
+
+                    // 3. Normalize Level/Room
+                    if (level && !level.startsWith('ม.')) level = `ม.${level}`;
+                    if (room === '10032008') room = ''; // Safety from old bug
+
+                    if (!email && !studentId) return null;
+
+                    return { 
+                        name: fullName,
+                        email: (email || '').toLowerCase(), 
+                        studentId: studentId,
+                        class: room, 
+                        batchYear: '2568', 
+                        level: level, 
+                        gender: gender, 
+                        citizenId: citizenId,
+                        roles: ['student'], 
+                        status: 'active' 
+                    };
+                }).filter(u => u !== null);
+
+                if (data.length === 0) {
+                    toast.error('No valid user data found in CSV.');
+                    return;
                 }
 
-                await bulkAddUsers(dataToImport);
-                toast.success(`Successfully imported ${dataToImport.length} users!`, { id: toastId });
+                await bulkAddUsers(data);
+                toast.success(`Successfully processed ${data.length} users!`);
                 loadUsers();
-            } catch (error) {
-                console.error("Import failed:", error);
-                toast.error(`Import failed: ${error.message}`, { id: toastId });
+            } catch (err) {
+                console.error("Import error:", err);
+                toast.error('Import failed: ' + err.message);
             } finally {
                 setIsImporting(false);
-                if (fileInputRef.current) fileInputRef.current.value = "";
+                if (fileInputRef.current) fileInputRef.current.value = '';
             }
         };
         reader.readAsText(file);
     };
 
-    // กำหนดค่าตัวเลือกแบบคงที่
     const levels = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6'];
-    const rooms = ['1', '2', '3'];
+    const rooms = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
     const genders = ['ชาย', 'หญิง'];
 
-    const getRoleBadgeColor = (role) => ({'admin': 'bg-purple-100 text-purple-800', 'teacher': 'bg-blue-100 text-blue-800', 'student': 'bg-green-100 text-green-800'}[role] || 'bg-gray-100 text-gray-800');
-    const getStatusBadgeColor = (status) => ({'active': 'bg-green-100 text-green-700', 'alumni': 'bg-amber-100 text-amber-700', 'inactive': 'bg-red-100 text-red-700'}[status] || 'bg-gray-100 text-gray-700');
+    const getRoleBadgeColor = (r) => {
+        const c = r.toLowerCase();
+        if (c === 'admin') return 'bg-purple-100 text-purple-700 border-purple-200';
+        if (c === 'teacher') return 'bg-blue-100 text-blue-700 border-blue-200';
+        return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    };
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-[#F1F5F9] text-slate-900 font-sans pb-20">
             <Navbar showBack={true} />
-            <div className="max-w-7xl mx-auto p-8">
-                <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-800">{t('user_management')}</h1>
-                        <p className="text-gray-500 mt-2">{t('user_mgmt_desc')}</p>
+            
+            <div className="max-w-7xl mx-auto px-6 py-12">
+                
+                {/* 1. HERO HEADER */}
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 mb-12">
+                    <div className="flex items-center gap-5">
+                        <div className="p-4 bg-emerald-600 rounded-3xl shadow-xl shadow-emerald-200">
+                            <ShieldCheck className="w-10 h-10 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-tight">{t('user_management')}</h1>
+                            <div className="flex items-center gap-2 text-slate-500 font-bold mt-1">
+                                <span className="px-2 py-0.5 bg-slate-200 rounded text-[10px] uppercase tracking-widest text-slate-600">Sync Active</span>
+                                <p>{t('user_mgmt_desc')}</p>
+                            </div>
+                        </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setIsPromoteModalOpen(true)} className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 rounded-2xl shadow-xl shadow-indigo-200 font-black text-white hover:bg-indigo-700 hover:-translate-y-1 transition-all active:translate-y-0">
+                            <GraduationCap size={20} />
+                            PROMOTE STUDENTS
+                        </button>
                         <input type="file" accept=".csv" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-                        <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition disabled:opacity-50">
-                            <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 8l-4-4m0 0L8 8m4-4v12" /></svg>
-                            {isImporting ? "Importing..." : "Import CSV"}
+                        <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="flex items-center gap-2 px-8 py-3.5 bg-white border-2 border-slate-100 rounded-2xl shadow-xl shadow-slate-200 font-black text-slate-600 hover:bg-slate-50 hover:-translate-y-1 transition-all active:translate-y-0 disabled:opacity-50">
+                            <Upload size={20} />
+                            IMPORT MASTER
                         </button>
-                        <button onClick={() => { 
-                            setUserToEdit(null); 
-                            setFormData({ name: '', email: '', roles: ['student'], class: '', batchYear: new Date().getFullYear().toString(), status: 'active', level: '', gender: '' }); 
-                            setIsFormModalOpen(true);
-                        }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-md flex items-center gap-2 transition">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                            Add User
+                        <button onClick={() => { setUserToEdit(null); setFormData({ name: '', email: '', roles: ['student'], class: '', batchYear: new Date().getFullYear().toString(), status: 'active', level: '', gender: '' }); setIsFormModalOpen(true); }} className="flex items-center gap-2 px-8 py-3.5 bg-slate-900 rounded-2xl shadow-2xl shadow-slate-300 font-black text-white hover:bg-slate-800 hover:-translate-y-1 transition-all active:translate-y-0">
+                            <UserPlus size={20} />
+                            REGISTER NEW
                         </button>
                     </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-wrap items-center gap-4">
-                    <div className="relative flex-grow min-w-[200px]">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg></div>
-                        <input type="text" placeholder="Search users..." className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-full focus:ring-2 focus:ring-green-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2">
-                        <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)} className="p-2 border border-gray-200 rounded-lg text-sm bg-white min-w-[120px]">
-                            <option value="all">ระดับชั้น: ทั้งหมด</option>
-                            {levels.map(l => <option key={l} value={l}>{l}</option>)}
-                        </select>
-                        <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="p-2 border border-gray-200 rounded-lg text-sm bg-white min-w-[120px]">
-                            <option value="all">ห้อง: ทั้งหมด</option>
-                            {rooms.map(r => <option key={r} value={r}>ห้อง {r}</option>)}
-                        </select>
-                        <select value={filterGender} onChange={(e) => setFilterGender(e.target.value)} className="p-2 border border-gray-200 rounded-lg text-sm bg-white min-w-[100px]">
-                            <option value="all">เพศ: ทั้งหมด</option>
-                            {genders.map(g => <option key={g} value={g}>{g}</option>)}
-                        </select>
-                        <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="p-2 border border-gray-200 rounded-lg text-sm bg-white min-w-[120px]">
-                            <option value="all">บทบาท: ทั้งหมด</option>
-                            <option value="student">Student</option>
-                            <option value="teacher">Teacher</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
+                {/* 2. COMMAND CENTER (FILTERS) */}
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-10">
+                    <div className="flex flex-col xl:flex-row items-center gap-6">
+                        <div className="relative w-full xl:w-[400px]">
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                            <input 
+                                type="text" 
+                                placeholder="Filter by identity (name/email)..." 
+                                className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-[1.25rem] focus:ring-4 focus:ring-emerald-500/10 transition-all font-bold text-slate-700"
+                                value={searchTerm} 
+                                onChange={(e) => setSearchTerm(e.target.value)} 
+                            />
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                            {[
+                                { val: filterLevel, set: setFilterLevel, opt: levels, label: 'LEVEL' },
+                                { val: filterClass, set: setFilterClass, opt: rooms, label: 'ROOM', prefix: 'R.' },
+                                { val: filterGender, set: setFilterGender, opt: genders, label: 'GENDER' },
+                                { val: filterRole, set: setFilterRole, opt: ['student', 'teacher', 'admin'], label: 'ROLE' }
+                            ].map((f, i) => (
+                                <div key={i} className="flex-grow md:flex-grow-0">
+                                    <select value={f.val} onChange={(e) => f.set(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border-none rounded-[1.25rem] text-xs font-black text-slate-500 focus:ring-4 focus:ring-emerald-500/10 cursor-pointer appearance-none hover:bg-slate-100 transition-colors tracking-widest">
+                                        <option value="all">{f.label}: ALL</option>
+                                        {f.opt.map(o => <option key={o} value={o} className="font-bold text-slate-800">{f.prefix || ''}{o}</option>)}
+                                    </select>
+                                </div>
+                            ))}
+                        </div>
 
-                    <div className="flex bg-gray-100 p-1 rounded-lg ml-auto">
-                        {['active', 'alumni', 'all'].map(s => (<button key={s} onClick={() => setFilterStatus(s)} className={`px-4 py-1.5 rounded-md text-xs font-semibold transition ${filterStatus === s ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>{s.toUpperCase()}</button>))}
+                        <div className="flex bg-slate-100 p-1.5 rounded-[1.25rem] xl:ml-auto shadow-inner">
+                            {['active', 'alumni', 'all'].map(s => (
+                                <button key={s} onClick={() => setFilterStatus(s)} className={`px-6 py-2.5 rounded-[1rem] text-[10px] font-black tracking-widest transition-all ${filterStatus === s ? 'bg-white text-emerald-600 shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>
+                                    {s.toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
+                {/* 3. SELECTION ACTIONS */}
                 {selectedIds.length > 0 && (
-                    <div className="bg-green-50 border border-green-200 p-3 rounded-lg mb-4 flex justify-between items-center animate-in fade-in slide-in-from-top-4">
-                        <span className="text-green-800 text-sm font-medium">{selectedIds.length} users selected</span>
-                        <div className="flex gap-2">
-                            <button onClick={() => handleStatusUpdateRequest('alumni')} className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3 py-1.5 rounded shadow-sm font-bold transition">Set as Alumni</button>
-                            <button onClick={() => handleStatusUpdateRequest('active')} className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded shadow-sm font-bold transition">Set as Active</button>
-                            <button onClick={() => handleDeleteRequest(selectedIds)} className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded shadow-sm font-bold transition">Delete Selected</button>
+                    <div className="bg-emerald-600 text-white p-6 rounded-[2.5rem] mb-10 flex flex-col md:flex-row justify-between items-center shadow-2xl shadow-emerald-200 animate-in slide-in-from-top-10 duration-500">
+                        <div className="flex items-center gap-5 mb-4 md:mb-0">
+                            <div className="w-12 h-12 bg-white text-emerald-600 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner">{selectedIds.length}</div>
+                            <div>
+                                <h4 className="font-black text-lg leading-tight uppercase tracking-tight">Accounts Selected</h4>
+                                <p className="text-emerald-100 text-xs font-bold">Apply batch operations to multiple records</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button onClick={() => handleStatusUpdateRequest('alumni')} className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl font-black text-sm transition-all border border-white/20">SET ALUMNI</button>
+                            <button onClick={() => handleStatusUpdateRequest('active')} className="px-6 py-3 bg-emerald-400 text-emerald-900 rounded-2xl font-black text-sm transition-all hover:bg-emerald-300">ACTIVATE ALL</button>
+                            <button onClick={() => handleDeleteRequest(selectedIds)} className="px-6 py-3 bg-red-500 hover:bg-red-400 rounded-2xl font-black text-sm shadow-xl transition-all">TERMINATE</button>
                         </div>
                     </div>
                 )}
 
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left"><input type="checkbox" className="rounded border-gray-300 text-green-600" onChange={handleSelectAll} checked={selectedIds.length > 0 && selectedIds.length === filteredUsers.length} /></th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">User</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Class / Batch</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Level / Gender</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Roles</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {loading ? (<tr><td colSpan="7" className="p-10 text-center text-gray-400">Loading...</td></tr>) : filteredUsers.length > 0 ? (
-                                filteredUsers.map((u) => (
-                                    <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${selectedIds.includes(u.id) ? 'bg-green-50/50' : ''}`}>
-                                        <td className="px-6 py-4"><input type="checkbox" className="rounded border-gray-300 text-green-600" checked={selectedIds.includes(u.id)} onChange={() => handleSelectRow(u.id)} /></td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex items-center">
-                                                <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold ${u.uid ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>{(u.name || u.email).charAt(0).toUpperCase()}</div>
-                                                <div className="ml-4"><div className="text-sm font-bold text-gray-900">{u.name}</div><div className="text-xs text-gray-500">{u.email}</div></div>
+                {/* 4. MASTER TABLE */}
+                <div className="bg-white rounded-[3rem] shadow-2xl shadow-slate-200 border border-slate-100 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-slate-50/80 border-b border-slate-100">
+                                    <th className="px-10 py-6 w-12 text-center">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-6 h-6 rounded-lg border-slate-300 text-emerald-600 focus:ring-4 focus:ring-emerald-500/20 transition-all cursor-pointer shadow-sm" 
+                                            onChange={handleSelectAll} 
+                                            checked={filteredUsers.length > 0 && selectedIds.length === filteredUsers.length} 
+                                        />
+                                    </th>
+                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Full Identity</th>
+                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Level</th>
+                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Room</th>
+                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Gender</th>
+                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">State</th>
+                                    <th className="px-10 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="8" className="py-40 text-center">
+                                            <div className="flex flex-col items-center gap-6">
+                                                <div className="w-16 h-16 border-8 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                                                <div className="space-y-1">
+                                                    <h3 className="text-xl font-black tracking-widest text-slate-900">SYNCHRONIZING</h3>
+                                                    <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Merging local records with master database</p>
+                                                </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm text-gray-900 font-medium">{u.level || '-'}</div><div className="text-xs text-gray-500">{u.class ? `ห้อง ${u.class}` : ''}</div></td>
-                                        <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm text-gray-900 font-medium">{u.batchYear || '-'}</div><div className="text-xs text-gray-500">{u.gender || ''}</div></td>
-                                        <td className="px-6 py-4 whitespace-nowrap"><div className="flex flex-wrap gap-1">{u.roles?.map(role => (<span key={role} className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${getRoleBadgeColor(role)}`}>{role}</span>))}</div></td>
-                                        <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 text-[10px] font-bold rounded-md uppercase ${getStatusBadgeColor(u.status)}`}>{u.status}</span></td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                                            <button onClick={() => setSelectedUser(u)} className="text-gray-600 hover:text-gray-900 font-bold px-2 py-1 rounded-md hover:bg-gray-100 transition">{t('view')}</button>
-                                            <button onClick={() => handleEdit(u)} className="text-blue-600 hover:text-blue-900 font-bold px-2 py-1 rounded-md hover:bg-blue-50 transition">{t('edit')}</button>
-                                            <button onClick={() => handleDeleteRequest(u.id)} className="text-red-600 hover:text-red-900 font-bold px-2 py-1 rounded-md hover:bg-red-50 transition">{t('delete')}</button>
+                                    </tr>
+                                ) : filteredUsers.length > 0 ? (
+                                    filteredUsers.map((u) => (
+                                        <tr key={u.id} className={`group transition-all duration-300 ${selectedIds.includes(u.id) ? 'bg-emerald-50/50' : 'hover:bg-slate-50/70'}`}>
+                                            <td className="px-10 py-7 text-center">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-6 h-6 rounded-lg border-slate-300 text-emerald-600 focus:ring-4 focus:ring-emerald-500/20 transition-all cursor-pointer" 
+                                                    checked={selectedIds.includes(u.id)} 
+                                                    onChange={() => handleSelectRow(u.id)} 
+                                                />
+                                            </td>
+                                            <td className="px-6 py-7 whitespace-nowrap">
+                                                <div className="flex items-center">
+                                                    <div className={`h-14 w-14 rounded-[1.25rem] flex items-center justify-center font-black text-xl shadow-xl transition-all group-hover:rotate-6 group-hover:scale-110 ${u.uid ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                        {(u.name || '?').charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div className="ml-5">
+                                                        <div className="text-base font-black text-slate-900 group-hover:text-emerald-600 transition-colors leading-tight mb-0.5">{u.name}</div>
+                                                        <div className="text-xs font-bold text-slate-400 tracking-tight">{u.email}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-7 whitespace-nowrap text-center">
+                                                <div className="text-sm font-black text-slate-800 leading-tight">{u.level || '-'}</div>
+                                            </td>
+                                            <td className="px-6 py-7 whitespace-nowrap text-center">
+                                                <div className="text-sm font-black text-slate-800 leading-tight">{u.class || '-'}</div>
+                                            </td>
+                                            <td className="px-6 py-7 whitespace-nowrap text-center">
+                                                <div className="text-sm font-black text-slate-800 leading-tight">{u.gender || '-'}</div>
+                                            </td>
+                                            <td className="px-6 py-7 whitespace-nowrap">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-2.5 h-2.5 rounded-full shadow-sm ${u.status === 'active' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                                    <span className={`text-[10px] font-black tracking-[0.15em] uppercase ${u.status === 'active' ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                                        {u.status}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-10 py-7 whitespace-nowrap text-right">
+                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
+                                                    <button onClick={() => setSelectedUser(u)} className="p-3 text-slate-400 hover:text-slate-900 hover:bg-white hover:shadow-xl rounded-2xl transition-all" title="View Report"><Eye size={20} /></button>
+                                                    <button onClick={() => handleEdit(u)} className="p-3 text-blue-500 hover:text-blue-700 hover:bg-white hover:shadow-xl rounded-2xl transition-all" title="Modify Access"><Edit3 size={20} /></button>
+                                                    <button onClick={() => handleDeleteRequest(u.id)} className="p-3 text-red-400 hover:text-red-700 hover:bg-white hover:shadow-xl rounded-2xl transition-all" title="Purge Record"><Trash2 size={20} /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="7" className="py-48 text-center">
+                                            <div className="flex flex-col items-center opacity-30 scale-125">
+                                                <div className="w-32 h-32 bg-slate-100 rounded-[2.5rem] flex items-center justify-center mb-8 rotate-12 group-hover:rotate-0 transition-transform">
+                                                    <Filter className="w-16 h-16 text-slate-300" />
+                                                </div>
+                                                <h3 className="text-2xl font-black text-slate-400 italic mb-3 tracking-tighter">NO ENTRIES FOUND</h3>
+                                                <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Adjust master filters to synchronize view</p>
+                                            </div>
                                         </td>
                                     </tr>
-                                ))
-                            ) : (<tr><td colSpan="7" className="px-6 py-10 text-center text-gray-400">No users found matching your filters.</td></tr>)}
-                        </tbody>
-                    </table>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="mt-12 flex justify-between items-center text-slate-400 px-4">
+                    <div className="flex items-center gap-3">
+                        <Clock size={16} />
+                        <span className="text-[10px] font-black uppercase tracking-[0.1em]">Last Master Sync: {new Date().toLocaleTimeString()}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-[0.1em]">Authorized by</span>
+                        <div className="h-6 w-6 bg-slate-200 rounded-md" />
+                    </div>
                 </div>
             </div>
 
+            {/* 5. USER FORM MODAL */}
             {isFormModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative my-8">
-                        <button 
-                            onClick={() => setIsFormModalOpen(false)}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-                        >
-                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4 overflow-y-auto">
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl p-12 relative my-12 animate-in zoom-in-95 duration-500">
+                        <button onClick={() => setIsFormModalOpen(false)} className="absolute top-10 right-10 p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all">
+                            <X size={30} />
                         </button>
                         
-                        <h2 className="text-2xl font-bold text-gray-800 mb-6">
-                            {userToEdit ? 'Edit User' : 'Add New User'}
-                        </h2>
+                        <div className="flex items-center gap-6 mb-12">
+                            <div className="w-20 h-20 bg-emerald-100 rounded-[1.75rem] flex items-center justify-center text-emerald-600 shadow-inner">
+                                {userToEdit ? <Edit3 size={36} /> : <UserPlus size={36} />}
+                            </div>
+                            <div>
+                                <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-tight">{userToEdit ? 'Modify Access' : 'Create Identity'}</h2>
+                                <p className="text-slate-500 font-bold text-lg">{userToEdit ? 'Update security clearances and metadata' : 'Register a new member to the school network'}</p>
+                            </div>
+                        </div>
                         
-                        <form onSubmit={handleFormSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Full Name</label>
-                                <input
-                                    type="text"
-                                    name="name"
-                                    value={formData.name}
-                                    onChange={handleChange}
-                                    required
-                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                                    placeholder="John Doe"
-                                />
-                            </div>
-                            
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Email Address</label>
-                                <input
-                                    type="email"
-                                    name="email"
-                                    value={formData.email}
-                                    onChange={handleChange}
-                                    required
-                                    disabled={!!userToEdit}
-                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none disabled:bg-gray-50 disabled:text-gray-500"
-                                    placeholder="john@example.com"
-                                />
-                                {userToEdit && <p className="text-[10px] text-gray-400 mt-1">Email cannot be changed after creation.</p>}
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Level (ระดับชั้น)</label>
-                                    <select
-                                        name="level"
-                                        value={formData.level}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white"
-                                    >
-                                        <option value="">เลือกระดับชั้น</option>
-                                        {levels.map(l => <option key={l} value={l}>{l}</option>)}
-                                    </select>
+                        <form onSubmit={handleFormSubmit} className="space-y-10">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Display Name</label>
+                                    <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required className="w-full px-6 py-5 bg-slate-50 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 font-bold text-slate-800 transition-all placeholder:text-slate-300" placeholder="Full legal name" />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Gender (เพศ)</label>
-                                    <select
-                                        name="gender"
-                                        value={formData.gender}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white"
-                                    >
-                                        <option value="">เลือกเพศ</option>
-                                        {genders.map(g => <option key={g} value={g}>{g}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Room (ห้อง)</label>
-                                    <select
-                                        name="class"
-                                        value={formData.class}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white"
-                                    >
-                                        <option value="">เลือกห้อง</option>
-                                        {rooms.map(r => <option key={r} value={r}>{r}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Batch Year</label>
-                                    <input
-                                        type="text"
-                                        name="batchYear"
-                                        value={formData.batchYear}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                                        placeholder="เช่น 2024"
-                                    />
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Email Identity</label>
+                                    <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required disabled={!!userToEdit} className="w-full px-6 py-5 bg-slate-50 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 font-bold text-slate-800 transition-all disabled:opacity-50 placeholder:text-slate-300" placeholder="user@nr.ac.th" />
                                 </div>
                             </div>
                             
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">Roles</label>
-                                <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-lg">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {[
+                                    { name: 'level', label: 'LEVEL', opt: levels },
+                                    { name: 'class', label: 'ROOM', opt: rooms },
+                                    { name: 'gender', label: 'GENDER', opt: ['ชาย', 'หญิง'] }
+                                ].map(f => (
+                                    <div key={f.name} className="space-y-3">
+                                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">{f.label}</label>
+                                        <select value={formData[f.name]} onChange={(e) => setFormData({...formData, [f.name]: e.target.value})} className="w-full px-5 py-4 bg-slate-50 border-none rounded-[1.25rem] focus:ring-4 focus:ring-emerald-500/10 font-bold text-sm transition-all appearance-none cursor-pointer text-slate-800">
+                                            <option value="">N/A</option>
+                                            {f.opt.map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                    </div>
+                                ))}
+                                <div className="space-y-3">
+                                    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">BATCH</label>
+                                    <input type="text" value={formData.batchYear} onChange={(e) => setFormData({...formData, batchYear: e.target.value})} className="w-full px-5 py-4 bg-slate-50 border-none rounded-[1.25rem] focus:ring-4 focus:ring-emerald-500/10 font-bold text-sm transition-all text-slate-800" placeholder="2568" />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Access Role Clearances</label>
+                                <div className="flex flex-wrap gap-4 p-6 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner">
                                     {['student', 'teacher', 'admin'].map(role => (
-                                        <label key={role} className="flex items-center gap-2 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                name="roles"
-                                                value={role}
-                                                checked={formData.roles.includes(role)}
-                                                onChange={handleChange}
-                                                className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-4 h-4"
-                                            />
-                                            <span className="text-sm text-gray-700 capitalize">{role}</span>
+                                        <label key={role} className={`flex items-center gap-4 px-7 py-4 rounded-[1.5rem] border-2 transition-all cursor-pointer ${formData.roles.includes(role) ? 'bg-emerald-600 border-emerald-600 text-white shadow-xl shadow-emerald-200' : 'bg-white border-slate-100 text-slate-300 hover:border-slate-200 hover:text-slate-400'}`}>
+                                            <input type="checkbox" checked={formData.roles.includes(role)} onChange={(e) => {
+                                                const updated = e.target.checked ? [...formData.roles, role] : formData.roles.filter(r => r !== role);
+                                                setFormData({...formData, roles: updated});
+                                            }} className="hidden" />
+                                            <ShieldCheck size={22} className={formData.roles.includes(role) ? 'text-white' : 'text-slate-100'} />
+                                            <span className="text-sm font-black uppercase tracking-[0.1em]">{role}</span>
                                         </label>
                                     ))}
                                 </div>
                             </div>
                             
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Status</label>
-                                <select
-                                    name="status"
-                                    value={formData.status}
-                                    onChange={handleChange}
-                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white"
-                                >
-                                    <option value="active">Active</option>
-                                    <option value="alumni">Alumni</option>
-                                    <option value="inactive">Inactive</option>
-                                </select>
-                            </div>
+                            {formData.roles.includes('teacher') && (
+                                <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">สิทธิ์พิเศษ (Special Permissions)</label>
+                                    <div className="p-6 bg-amber-50/50 rounded-[2rem] border border-amber-100/50">
+                                        <label className={`flex items-center gap-4 px-7 py-4 rounded-[1.5rem] border-2 transition-all cursor-pointer ${formData.permissions.includes('discipline.write') ? 'bg-amber-500 border-amber-500 text-white shadow-xl shadow-amber-100' : 'bg-white border-slate-100 text-slate-300 hover:border-slate-200 hover:text-slate-400'}`}>
+                                            <input type="checkbox" checked={formData.permissions.includes('discipline.write')} onChange={(e) => {
+                                                const updated = e.target.checked ? [...formData.permissions, 'discipline.write'] : formData.permissions.filter(p => p !== 'discipline.write');
+                                                setFormData({...formData, permissions: updated});
+                                            }} className="hidden" />
+                                            <Clock size={22} className={formData.permissions.includes('discipline.write') ? 'text-white' : 'text-slate-100'} />
+                                            <div>
+                                                <span className="text-sm font-black uppercase tracking-[0.1em] block">ตัดและแก้ไขคะแนนพฤติกรรม</span>
+                                                <span className="text-[9px] font-bold opacity-60 uppercase tracking-widest leading-none">discipline.write</span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
                             
-                            <div className="flex justify-end gap-3 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsFormModalOpen(false)}
-                                    className="px-6 py-2 border border-gray-200 rounded-xl text-gray-600 font-bold hover:bg-gray-50 transition"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="px-6 py-2 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition shadow-md disabled:bg-green-400"
-                                >
-                                    {loading ? 'Saving...' : userToEdit ? 'Update User' : 'Add User'}
+                            <div className="flex flex-col md:flex-row justify-end gap-4 pt-10 border-t border-slate-100">
+                                <button type="button" onClick={() => setIsFormModalOpen(false)} className="px-10 py-5 rounded-[1.5rem] text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-xs tracking-[0.2em]">ABORT MISSION</button>
+                                <button type="submit" disabled={loading} className="px-14 py-5 bg-slate-900 text-white rounded-[1.5rem] font-black shadow-2xl shadow-slate-300 hover:bg-emerald-600 hover:-translate-y-1 transition-all active:translate-y-0 disabled:opacity-50 uppercase text-xs tracking-[0.2em]">
+                                    {loading ? 'Processing...' : userToEdit ? 'Push Updates' : 'Commit to Database'}
                                 </button>
                             </div>
                         </form>
@@ -535,105 +649,120 @@ const UserManagement = () => {
                 </div>
             )}
 
+            {/* 6. DETAILS PANEL */}
             {selectedUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative overflow-hidden">
-                        <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
-                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-2xl p-4">
+                    <div className="bg-white rounded-[4rem] shadow-2xl w-full max-w-lg p-14 relative overflow-hidden animate-in fade-in zoom-in duration-500">
+                        <div className="absolute top-0 left-0 w-full h-48 bg-gradient-to-br from-emerald-600 to-teal-700 shadow-lg" />
+                        
+                        <button onClick={() => setSelectedUser(null)} className="absolute top-10 right-10 p-3 bg-white/20 text-white hover:bg-red-500 hover:text-white rounded-full transition-all">
+                            <X size={28} />
                         </button>
                         
-                        <div className="text-center mb-6">
-                            <div className={`w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center font-bold ${selectedUser.uid ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                                {(selectedUser.name || 'U').charAt(0).toUpperCase()}
-                            </div>
-                            <h2 className="text-2xl font-bold text-gray-800">{selectedUser.name || 'Anonymous'}</h2>
-                            <p className="text-gray-500">{selectedUser.email}</p>
-                        </div>
-                        
-                        <div className="space-y-4 mb-6">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-gray-50 p-3 rounded-lg">
-                                    <span className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Status</span>
-                                    <span className={`text-sm font-bold uppercase ${getStatusBadgeColor(selectedUser.status).split(' ')[1]}`}>
-                                        {selectedUser.status}
-                                    </span>
-                                </div>
-                                <div className="bg-gray-50 p-3 rounded-lg">
-                                    <span className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Class / Batch</span>
-                                    <span className="text-sm font-bold text-gray-700">
-                                        {selectedUser.class || 'N/A'} {selectedUser.batchYear ? `(${selectedUser.batchYear})` : ''}
-                                    </span>
+                        <div className="relative mt-12 text-center mb-12">
+                            <div className="w-36 h-36 rounded-[2.5rem] bg-white p-2 shadow-2xl mx-auto mb-8 transform rotate-3">
+                                <div className={`w-full h-full rounded-[2rem] flex items-center justify-center font-black text-5xl shadow-inner ${selectedUser.uid ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}>
+                                    {(selectedUser.name || '?').charAt(0).toUpperCase()}
                                 </div>
                             </div>
-                            
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                                <span className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Roles</span>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                    {selectedUser.roles?.map(role => (
-                                        <span key={role} className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${getRoleBadgeColor(role)}`}>
-                                            {role}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                            
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                                <span className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Account Link Status</span>
-                                {selectedUser.uid ? (
-                                    <div className="flex items-center gap-2 text-green-600">
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                        </svg>
-                                        <span className="text-xs font-bold text-green-700">Linked to Google Account</span>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-2 text-amber-500">
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                        </svg>
-                                        <span className="text-xs font-bold text-amber-700">Pending First Login</span>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            {selectedUser.updatedAt && (
-                                <div className="text-[10px] text-gray-400 text-center">
-                                    Last Updated: {new Date(selectedUser.updatedAt).toLocaleString()}
-                                </div>
-                            )}
-
-                            {/* แสดงข้อมูลเพิ่มเติมอื่นๆ ทั้งหมดที่มีใน Database */}
-                            <div className="mt-4 pt-4 border-t border-gray-100">
-                                <span className="text-[10px] text-gray-400 uppercase font-bold block mb-2">Detailed Data</span>
-                                <div className="grid grid-cols-1 gap-2">
-                                    {Object.entries(selectedUser)
-                                        .filter(([key, value]) => 
-                                            !['id', 'uid', 'name', 'displayName', 'email', 'roles', 'role', 'status', 'class', 'batchYear', 'updatedAt', 'createdAt', 'FirstName', 'LastName'].includes(key) &&
-                                            typeof value !== 'object' && 
-                                            value !== '' && 
-                                            value !== null
-                                        )
-                                        .map(([key, value]) => (
-                                            <div key={key} className="flex justify-between items-center text-xs bg-gray-50/50 p-2 rounded">
-                                                <span className="text-gray-500 font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                                                <span className="text-gray-800 font-bold">{value.toString()}</span>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
+                            <h2 className="text-4xl font-black text-slate-900 leading-tight mb-2 tracking-tighter">{selectedUser.name}</h2>
+                            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-slate-100 rounded-full">
+                                <div className={`w-2 h-2 rounded-full ${selectedUser.uid ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{selectedUser.email}</span>
                             </div>
                         </div>
                         
-                        <button onClick={() => setSelectedUser(null)} className="w-full bg-gray-900 text-white rounded-xl py-3 font-bold hover:bg-gray-800 transition">Close</button>
+                        <div className="grid grid-cols-2 gap-6 mb-12">
+                            <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-3">PLACEMENT</span>
+                                <div className="text-lg font-black text-slate-800 leading-none">Room {selectedUser.class || '-'}</div>
+                                <div className="text-[10px] font-bold text-emerald-600 mt-2 uppercase tracking-wide">{selectedUser.level || '-'}</div>
+                            </div>
+                            <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-3">IDENTIFIERS</span>
+                                <div className="text-lg font-black text-slate-800 leading-none">{selectedUser.gender || 'Unknown'}</div>
+                                <div className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-wide">ID: {selectedUser.studentId || 'N/A'}</div>
+                            </div>
+                        </div>
+                        
+                        <div className="bg-slate-900 p-8 rounded-[2.5rem] mb-12 shadow-2xl shadow-slate-300">
+                            <div className="flex items-center justify-between mb-4">
+                                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em]">Clearances</span>
+                                <ShieldCheck size={16} className="text-emerald-500" />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {selectedUser.roles?.map(role => (
+                                    <span key={role} className="px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] border border-emerald-500/20">
+                                        {role}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <button onClick={() => setSelectedUser(null)} className="w-full bg-slate-900 text-white rounded-[1.5rem] py-6 font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-emerald-600 hover:-translate-y-1 transition-all active:scale-95">CLOSE ACCESS</button>
                     </div>
                 </div>
             )} 
             
-            <ConfirmationModal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onConfirm={confirmDelete} title="Confirm Deletion" message={Array.isArray(userToDelete) ? `Are you sure you want to delete ${userToDelete.length} selected users? This action cannot be undone.` : "Are you sure you want to delete this user? This action cannot be undone."} confirmText="Delete" isLoading={isDeleting} />
-            
-            <ConfirmationModal isOpen={isStatusModalOpen} onClose={() => setIsStatusModalOpen(false)} onConfirm={confirmStatusUpdate} title="Confirm Status Update" message={`Are you sure you want to update ${selectedIds.length} users to '${statusToUpdate}'?`} confirmText="Update" isLoading={isUpdatingStatus} />
+            <ConfirmationModal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onConfirm={confirmDelete} title="Confirm Purge" message="This action will permanently erase this identity from the school network. This cannot be undone." confirmText="PURGE NOW" isLoading={isDeleting} />
+            <ConfirmationModal isOpen={isStatusModalOpen} onClose={() => setIsStatusModalOpen(false)} onConfirm={confirmStatusUpdate} title="Lifecycle Transition" message={`Move selected users to the ${statusToUpdate} state?`} confirmText="CONFIRM" isLoading={isUpdatingStatus} />
+
+            {/* 7. PROMOTION MODAL (STEP-BY-STEP) */}
+            {isPromoteModalOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4">
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-xl p-12 relative animate-in zoom-in-95 duration-500">
+                        <button onClick={() => setIsPromoteModalOpen(false)} className="absolute top-10 right-10 p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all">
+                            <X size={30} />
+                        </button>
+
+                        <div className="mb-10">
+                            <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2 uppercase italic">Academic Year Promotion</h2>
+                            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Select a specific transition to execute</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <button disabled={isPromoting} onClick={() => handlePromotionLevel("ม.6", "alumni")} className="p-6 bg-rose-50 border-2 border-rose-100 rounded-3xl text-left hover:bg-rose-100 transition-all group">
+                                    <div className="text-rose-600 font-black text-lg">ม.6 → ALUMNI</div>
+                                    <div className="text-rose-400 text-[10px] font-bold uppercase mt-1">Graduate Senior High</div>
+                                </button>
+                                <button disabled={isPromoting} onClick={() => handlePromotionLevel("ม.3", "alumni")} className="p-6 bg-orange-50 border-2 border-orange-100 rounded-3xl text-left hover:bg-orange-100 transition-all group">
+                                    <div className="text-orange-600 font-black text-lg">ม.3 → ALUMNI</div>
+                                    <div className="text-orange-400 text-[10px] font-bold uppercase mt-1">Graduate Junior High</div>
+                                </button>
+                            </div>
+
+                            <div className="h-px bg-slate-100 my-4" />
+
+                            <div className="grid grid-cols-2 gap-4">
+                                {[
+                                    { f: "ม.5", t: "ม.6" },
+                                    { f: "ม.4", t: "ม.5" },
+                                    { f: "ม.2", t: "ม.3" },
+                                    { f: "ม.1", t: "ม.2" }
+                                ].map(step => (
+                                    <button 
+                                        key={step.f}
+                                        disabled={isPromoting} 
+                                        onClick={() => handlePromotionLevel(step.f, step.t)} 
+                                        className="p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl text-left hover:border-indigo-200 hover:bg-indigo-50 transition-all group"
+                                    >
+                                        <div className="text-slate-900 font-black text-base group-hover:text-indigo-600">{step.f} → {step.t}</div>
+                                        <div className="text-slate-400 text-[9px] font-bold uppercase mt-0.5">Promotion Step</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-10 p-6 bg-amber-50 rounded-3xl border border-amber-100 flex gap-4">
+                            <AlertCircle className="text-amber-500 shrink-0" size={24} />
+                            <p className="text-amber-800 text-xs font-bold leading-relaxed">
+                                RECOMMENDED: Start from the highest grade (M.6) and work downwards to prevent data overlapping.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

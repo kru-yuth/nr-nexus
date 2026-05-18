@@ -30,9 +30,11 @@ export function AuthProvider({ children }) {
 
                 if (userData && userData.roles && userData.roles.length > 0) {
                     console.log("Login: User verified via email lookup and linked.");
-                    setCurrentUser(user);
+                    // Merge Firebase Auth user with Firestore Profile Data
+                    const combinedUser = { ...user, ...userData };
+                    setCurrentUser(combinedUser);
                     setUserRoles(userData.roles);
-                    return { user, roles: userData.roles };
+                    return { user: combinedUser, roles: userData.roles };
                 } else {
                     console.error("Login: Email not found in whitelist. Signing out.");
                     await signOut(auth);
@@ -61,11 +63,12 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user && user.email.endsWith('@nr.ac.th')) {
-                setCurrentUser(user);
                 try {
                     // Always try to fetch latest roles/status
                     const userData = await fetchUserByEmailAndLinkUID(user.email, user.uid);
                     if (userData && userData.roles && userData.roles.length > 0) {
+                        const combinedUser = { ...user, ...userData };
+                        setCurrentUser(combinedUser);
                         setUserRoles(userData.roles);
                     } else {
                         console.warn("Session restore: User not in whitelist. Signing out.");
@@ -75,6 +78,8 @@ export function AuthProvider({ children }) {
                     }
                 } catch (e) {
                     console.error("Auth Listener Fetch Error:", e);
+                    // Fallback to basic user if fetch fails
+                    setCurrentUser(user);
                     if (e.code === 'permission-denied') {
                         setAuthError("permission_error");
                     }

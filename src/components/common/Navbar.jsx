@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useLanguage } from '../../context/LanguageContext';
 import { logoutUser } from '../../services/auth';
 import LanguageSwitcher from './LanguageSwitcher';
-import { Home, LogOut, ArrowLeft } from 'lucide-react';
+import { Home, LogOut, ArrowLeft, Zap, Trash2, LayoutGrid } from 'lucide-react';
 
 const Navbar = ({ showBack = false }) => {
     const { user, role } = useAuth();
@@ -54,7 +54,19 @@ const Navbar = ({ showBack = false }) => {
                         </Link>
                     </div>
 
-                    <div className="flex items-center gap-4 sm:gap-6">
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        {/* Hub Link */}
+                        <div className="flex items-center gap-1 border-r pr-4 mr-2 border-gray-200">
+                            <Link 
+                                to="/hub"
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-md transition"
+                                title="App Hub"
+                            >
+                                <LayoutGrid className="w-4 h-4" />
+                                <span className="hidden md:inline">{t('app_hub_title')}</span>
+                            </Link>
+                        </div>
+
                         <LanguageSwitcher />
 
                         {user && (

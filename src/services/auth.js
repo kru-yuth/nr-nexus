@@ -48,7 +48,8 @@ export const fetchUserRoles = async (uid) => {
 
     try {
         console.log(`Fetching roles for UID: ${uid}`);
-        const userDoc = await getDoc(doc(db, "users", uid));
+        const docRef = doc(db, "users", uid);
+        const userDoc = await getDoc(docRef);
 
         if (userDoc.exists()) {
             const data = userDoc.data();
@@ -64,10 +65,15 @@ export const fetchUserRoles = async (uid) => {
             
             return ['student']; // Default role
         } else {
-            console.warn(`No user document found for UID: ${uid}`);
+            console.warn(`No user document found for UID: ${uid}. User might not be linked yet.`);
             return [];
         }
     } catch (error) {
+        // Handle Permission Denied gracefully during initial login/linking
+        if (error.code === 'permission-denied') {
+            console.warn(`Permission denied while fetching roles for UID ${uid}. This is expected if the document is not yet created.`);
+            return [];
+        }
         console.error(`Error fetching roles for UID ${uid}:`, error.code, error.message);
         return [];
     }

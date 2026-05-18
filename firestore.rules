@@ -5,30 +5,63 @@ service cloud.firestore {
     // Helper function to check roles in the 'users' collection
     function hasRole(role) {
       return request.auth != null && 
-             role in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles;
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+               (role in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', [])) ||
+               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == role) ||
+               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('Role', '') == role)
+             );
+    }
+
+    // Helper to check for specific permissions
+    function hasPermission(perm) {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             perm in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', []);
     }
 
     // Helper to check if the user is active
     function isActive() {
       return request.auth != null && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'active') == 'active';
     }
 
     // Users Collection
     match /users/{userId} {
-      // Allow reading your own document or if you are an admin
-      allow read: if request.auth != null && (request.auth.uid == userId || hasRole('admin'));
+      // Allow getting a specific document
+      allow get: if request.auth != null && (
+        request.auth.uid == userId || 
+        hasRole('admin') ||
+        (resource != null && (
+          resource.data.get('email', '') == request.auth.token.email || 
+          resource.data.get('Email', '') == request.auth.token.email
+        ))
+      );
+      
+      // Allow querying the collection (list)
+      allow list: if request.auth != null && (
+        hasRole('admin') ||
+        (
+          resource.data.get('email', '') == request.auth.token.email || 
+          resource.data.get('Email', '') == request.auth.token.email
+        )
+      );
       
       // Allow initial UID linking: If email matches and document exists
-      // This is for the setDoc(doc(db, "users", uid), ...) part
       allow create, update: if request.auth != null && (
         request.auth.uid == userId || 
         hasRole('admin') ||
-        (request.resource.data.email == request.auth.token.email && 
-         (!exists(/databases/$(database)/documents/users/$(userId)) || 
-          get(/databases/$(database)/documents/users/$(userId)).data.email == request.auth.token.email))
+        (
+          (request.resource.data.get('email', '') == request.auth.token.email || 
+           request.resource.data.get('Email', '') == request.auth.token.email) && 
+          (!exists(/databases/$(database)/documents/users/$(userId)) || 
+           get(/databases/$(database)/documents/users/$(userId)).data.get('email', '') == request.auth.token.email ||
+           get(/databases/$(database)/documents/users/$(userId)).data.get('Email', '') == request.auth.token.email)
+        )
       );
       
+      // CRITICAL: Only admins can modify 'permissions' or delete users
+      allow update: if hasRole('admin') || (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions', 'roles']));
       allow delete: if hasRole('admin');
     }
 
@@ -36,6 +69,54 @@ service cloud.firestore {
     match /volunteer_jobs/{jobId} {
       allow read: if request.auth != null;
       allow write: if hasRole('admin') || hasRole('teacher');
+    }
+
+    // NR-Nexus: Late Check-in Module
+    match /late_checkins/{docId} {
+      // Allow reading own record or if admin/discipline
+      allow read: if request.auth != null && (
+        (exists(/databases/$(database)/documents/late_checkins/$(docId)) && 
+         get(/databases/$(database)/documents/late_checkins/$(docId)).data.studentId == request.auth.uid) ||
+        hasRole('admin') || hasPermission('discipline.write')
+      );
+      
+      // Allow students to self-record late check-in
+      // Enforcement: server timestamp, recordedBy='self', docId must be {uid}_{date}
+      allow create: if request.auth != null && 
+                    request.resource.data.studentId == request.auth.uid &&
+                    request.resource.data.checkInTime == request.time &&
+                    request.resource.data.recordedBy == 'self' &&
+                    docId == request.auth.uid + "_" + request.resource.data.date;
+                    
+      // Allow admins or staff with discipline.write to manage (manual records or corrections)
+      allow create: if (hasRole('admin') || hasPermission('discipline.write')) && request.resource.data.recordedBy == 'discipline';
+      allow update, delete: if hasRole('admin') || hasPermission('discipline.write');
+    }
+
+    // NR-Nexus: Behavior Scores
+    match /behavior_scores/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || hasRole('admin') || hasPermission('discipline.write'));
+      
+      // Allow initialization
+      allow create: if request.auth != null && request.auth.uid == userId && 
+                    request.resource.data.currentScore == 100;
+                    
+      // Allow students to decrement score via batch (strict math)
+      // Now also allows -0 for warnings
+      allow update: if request.auth != null && request.auth.uid == userId &&
+                    request.resource.data.updatedAt == request.time &&
+                    (request.resource.data.currentScore == resource.data.currentScore - 5 || 
+                     request.resource.data.currentScore == resource.data.currentScore - 10 ||
+                     request.resource.data.currentScore == resource.data.currentScore);
+      
+      allow write: if hasRole('admin') || hasPermission('discipline.write');
+
+      // History subcollection
+      match /history/{logId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || hasRole('admin') || hasPermission('discipline.write'));
+        allow create: if request.auth != null && (request.auth.uid == userId || hasRole('admin') || hasPermission('discipline.write'));
+        allow update, delete: if hasRole('admin') || hasPermission('discipline.write');
+      }
     }
 
     // NR-Electricity-Stats: Electricity Records

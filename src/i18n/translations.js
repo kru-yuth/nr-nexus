@@ -76,6 +76,18 @@ export const translations = {
         // Navigation
         admin_system_title: "ระบบจัดการงานอาสา",
 
+        // App Hub
+        app_hub_title: "NR App Hub",
+        app_hub_subtitle: "เลือกบริการที่คุณต้องการใช้งาน",
+        nexus_app_name: "NR Nexus",
+        nexus_app_desc: "ระบบบริหารจัดการสถานศึกษาและกิจกรรมอาสา",
+        electricity_app_name: "NR Electricity",
+        electricity_app_desc: "ระบบบันทึกและติดตามสถิติการใช้ไฟฟ้า",
+        waste_app_name: "NR Waste",
+        waste_app_desc: "ระบบบริหารจัดการข้อมูลขยะและสิ่งแวดล้อม",
+        launch_app: "เข้าใช้งาน",
+        request_access: "ขอสิทธิ์เข้าใช้งาน",
+
         // Student Gallery
         volunteer_opportunities: "โอกาสงานอาสา",
         discover_jobs_desc: "ค้นหางานและเก็บคะแนนสะสม",
@@ -199,6 +211,18 @@ export const translations = {
 
         // Navigation
         admin_system_title: "Volunteer Management System",
+
+        // App Hub
+        app_hub_title: "NR App Hub",
+        app_hub_subtitle: "Select the service you want to use",
+        nexus_app_name: "NR Nexus",
+        nexus_app_desc: "School management and volunteer activity system",
+        electricity_app_name: "NR Electricity",
+        electricity_app_desc: "Electricity usage statistics and tracking system",
+        waste_app_name: "NR Waste",
+        waste_app_desc: "Waste and environmental data management system",
+        launch_app: "Launch App",
+        request_access: "Request Access",
 
         // Student Gallery
         volunteer_opportunities: "Volunteer Opportunities",

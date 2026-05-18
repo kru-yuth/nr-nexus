@@ -1,0 +1,5 @@
+﻿email,studentId,prefix,firstName,lastName,gender,level,class,citizenId,status,_review_flag
+,20352,นางสาว,น้ำฟ้า,ปานโต,หญิง,ม.6,2,1102003960161,pending,missing_email_pending
+,20391,นางสาว,ดวงสมร,อ่อนเหลือง,หญิง,ม.3,1,1249900956903,pending,missing_email_pending
+,20484,นาย,บุญทวี,คำชนะ,ชาย,ม.3,3,1350101913350,pending,missing_email_pending
+,20491,นาย,มนัสนันท์,อาดัม,ชาย,ม.2,3,1439900681007,pending,missing_email_pending
