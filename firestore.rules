@@ -4,138 +4,288 @@ service cloud.firestore {
     
     // Helper function to check roles in the 'users' collection
     function hasRole(role) {
-      return request.auth != null && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-               (role in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', [])) ||
-               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == role) ||
-               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('Role', '') == role)
-             );
+      let data = getUserData();
+      return request.auth != null && data != null && (
+        role in data.get('roles', []) ||
+        data.get('role', '') == role ||
+        data.get('Role', '') == role
+      );
     }
 
     // Helper to check for specific permissions
     function hasPermission(perm) {
-      return request.auth != null && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             perm in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', []);
+      let data = getUserData();
+      return request.auth != null && data != null && 
+             perm in data.get('permissions', []);
     }
 
     // Helper to check if the user is active
     function isActive() {
-      return request.auth != null && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'active') == 'active';
+      let data = getUserData();
+      return request.auth != null && data != null && 
+             data.get('status', 'active') == 'active';
+    }
+    
+    // Improved Identity Helper with 3 Patterns
+    // Returns the current user's profile document data
+    function getUserData() {
+      let by_uid = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(by_uid) ? get(by_uid).data 
+           : (request.auth.token != null && 'email' in request.auth.token) ? (
+               exists(/databases/$(database)/documents/users/$(request.auth.token.email.replace('@', '_').replace('.', '_'))) ?
+               get(/databases/$(database)/documents/users/$(request.auth.token.email.replace('@', '_').replace('.', '_'))).data : null
+             )
+           : null;
     }
 
     // Users Collection
     match /users/{userId} {
-      // Allow getting a specific document
+      // Identity Check: Check if this document belongs to the requester using 3 patterns
+      function isOwner() {
+        return request.auth != null && (
+          request.auth.uid == userId || // Pattern 1: Doc ID is UID
+          (
+            request.auth.token != null && 'email' in request.auth.token && (
+              userId == request.auth.token.email.replace('@', '_').replace('.', '_') || // Pattern 2: Doc ID is Email-key
+              resource.data.get('email', '') == request.auth.token.email // Pattern 3b: email field inside doc
+            )
+          ) ||
+          resource.data.get('uid', '') == request.auth.uid // Pattern 3: uid field inside doc
+        );
+      }
+
+      // Helper function to check if requester is the homeroom teacher of the student
+      function isHomeroomTeacherOf(studentData) {
+        let teacherData = getUserData();
+        return teacherData != null &&
+               teacherData.get('homeroomClass', '') != '' &&
+               studentData.get('level', '') != '' &&
+               studentData.get('class', '') != '' &&
+               teacherData.get('homeroomClass', '') == (studentData.get('level', '') + '/' + studentData.get('class', ''));
+      }
+
       allow get: if request.auth != null && (
-        request.auth.uid == userId || 
+        isOwner() ||
         hasRole('admin') ||
-        (resource != null && (
-          resource.data.get('email', '') == request.auth.token.email || 
-          resource.data.get('Email', '') == request.auth.token.email
+        hasPermission('discipline.read') ||
+        hasPermission('discipline.write') ||
+        hasPermission('attendance.read') ||
+        (hasRole('teacher') && (
+          resource.data.get('roles', []).hasAny(['teacher', 'admin']) ||
+          resource.data.get('role', '') == 'teacher' ||
+          resource.data.get('Role', '') == 'teacher' ||
+          isHomeroomTeacherOf(resource.data)
         ))
       );
       
-      // Allow querying the collection (list)
       allow list: if request.auth != null && (
         hasRole('admin') ||
+        (hasRole('teacher') && isHomeroomTeacherOf(resource.data)) ||
+        hasPermission('discipline.write') ||
+        hasPermission('discipline.read') ||
+        hasPermission('attendance.read') ||
         (
-          resource.data.get('email', '') == request.auth.token.email || 
-          resource.data.get('Email', '') == request.auth.token.email
+          (request.auth.token != null && 'email' in request.auth.token && (
+            resource.data.get('email', '') == request.auth.token.email || 
+            resource.data.get('Email', '') == request.auth.token.email
+          )) ||
+          resource.data.get('uid', '') == request.auth.uid
         )
       );
       
-      // Allow initial UID linking: If email matches and document exists
       allow create, update: if request.auth != null && (
-        request.auth.uid == userId || 
-        hasRole('admin') ||
-        (
-          (request.resource.data.get('email', '') == request.auth.token.email || 
-           request.resource.data.get('Email', '') == request.auth.token.email) && 
-          (!exists(/databases/$(database)/documents/users/$(userId)) || 
-           get(/databases/$(database)/documents/users/$(userId)).data.get('email', '') == request.auth.token.email ||
-           get(/databases/$(database)/documents/users/$(userId)).data.get('Email', '') == request.auth.token.email)
-        )
+        isOwner() || 
+        hasRole('admin')
       );
       
-      // CRITICAL: Only admins can modify 'permissions' or delete users
-      allow update: if hasRole('admin') || (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions', 'roles']));
+      allow update: if hasRole('admin') || (isOwner() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions', 'roles']));
       allow delete: if hasRole('admin');
     }
 
-    // NR-Nexus: Volunteer Jobs
-    match /volunteer_jobs/{jobId} {
-      allow read: if request.auth != null;
-      allow write: if hasRole('admin') || hasRole('teacher');
-    }
-
-    // NR-Nexus: Late Check-in Module
+    // late_checkins and behavior_scores
     match /late_checkins/{docId} {
-      // Allow reading own record or if admin/discipline
       allow read: if request.auth != null && (
-        (exists(/databases/$(database)/documents/late_checkins/$(docId)) && 
-         get(/databases/$(database)/documents/late_checkins/$(docId)).data.studentId == request.auth.uid) ||
-        hasRole('admin') || hasPermission('discipline.write')
+        (resource != null && (resource.data.studentId == request.auth.uid || resource.data.uid == request.auth.uid)) ||
+        hasRole('admin') || 
+        hasRole('teacher') ||
+        hasPermission('discipline.write') ||
+        hasPermission('discipline.read')
       );
       
-      // Allow students to self-record late check-in
-      // Enforcement: server timestamp, recordedBy='self', docId must be {uid}_{date}
       allow create: if request.auth != null && 
-                    request.resource.data.studentId == request.auth.uid &&
+                    (request.resource.data.studentId == request.auth.uid || request.resource.data.uid == request.auth.uid) &&
                     request.resource.data.checkInTime == request.time &&
                     request.resource.data.recordedBy == 'self' &&
                     docId == request.auth.uid + "_" + request.resource.data.date;
                     
-      // Allow admins or staff with discipline.write to manage (manual records or corrections)
       allow create: if (hasRole('admin') || hasPermission('discipline.write')) && request.resource.data.recordedBy == 'discipline';
       allow update, delete: if hasRole('admin') || hasPermission('discipline.write');
     }
 
-    // NR-Nexus: Behavior Scores
+    // NR-Nexus: Attendance System - Subject Management
+    match /subjects/{subjectId} {
+      allow read: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('teacher') ||
+        hasPermission('attendance.read') ||
+        hasPermission('attendance.write')
+      );
+      allow create, update, delete: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('teacher') ||
+        hasPermission('attendance.write')
+      );
+    }
+
+    // NR-Nexus: Attendance System - Sessions & Records
+    match /attendance_sessions/{sessionId} {
+      allow read: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('teacher') ||
+        hasPermission('attendance.read') ||
+        hasPermission('attendance.write')
+      );
+      allow create, update, delete: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('teacher') ||
+        hasPermission('attendance.write')
+      );
+    }
+
+    match /attendance_records/{recordId} {
+      allow read: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('teacher') ||
+        hasPermission('attendance.read') ||
+        hasPermission('attendance.write') ||
+        (resource != null && (resource.data.studentId == request.auth.uid || resource.data.uid == request.auth.uid))
+      );
+      allow create, update, delete: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('teacher') ||
+        hasPermission('attendance.write')
+      );
+    }
+
     match /behavior_scores/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || hasRole('admin') || hasPermission('discipline.write'));
+      function isScoreOwner(uid) {
+        return request.auth != null && (request.auth.uid == uid || resource.data.uid == request.auth.uid);
+      }
+
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || 
+        isScoreOwner(userId) ||
+        hasRole('admin') || 
+        hasRole('teacher') ||
+        hasPermission('discipline.write') ||
+        hasPermission('discipline.read')
+      );
       
-      // Allow initialization
-      allow create: if request.auth != null && request.auth.uid == userId && 
-                    request.resource.data.currentScore == 100;
+      allow create: if request.auth != null && (request.auth.uid == userId || request.resource.data.uid == request.auth.uid)
+                    && request.resource.data.currentScore <= 100
+                    && request.resource.data.currentScore >= 0
+                    && request.resource.data.updatedAt == request.time;
                     
-      // Allow students to decrement score via batch (strict math)
-      // Now also allows -0 for warnings
-      allow update: if request.auth != null && request.auth.uid == userId &&
-                    request.resource.data.updatedAt == request.time &&
-                    (request.resource.data.currentScore == resource.data.currentScore - 5 || 
-                     request.resource.data.currentScore == resource.data.currentScore - 10 ||
-                     request.resource.data.currentScore == resource.data.currentScore);
+      allow update: if isScoreOwner(userId)
+                    && request.resource.data.currentScore <= 100
+                    && request.resource.data.currentScore >= 0
+                    && request.resource.data.updatedAt == request.time;
       
       allow write: if hasRole('admin') || hasPermission('discipline.write');
 
-      // History subcollection
       match /history/{logId} {
-        allow read: if request.auth != null && (request.auth.uid == userId || hasRole('admin') || hasPermission('discipline.write'));
+        allow read: if request.auth != null && (
+          request.auth.uid == userId || 
+          isScoreOwner(userId) ||
+          hasRole('admin') || 
+          hasRole('teacher') ||
+          hasPermission('discipline.write') ||
+          hasPermission('discipline.read')
+        );
         allow create: if request.auth != null && (request.auth.uid == userId || hasRole('admin') || hasPermission('discipline.write'));
         allow update, delete: if hasRole('admin') || hasPermission('discipline.write');
       }
     }
 
-    // NR-Electricity-Stats: Electricity Records
+    // Default other modules
+    match /volunteer_jobs/{jobId} {
+      allow read: if request.auth != null;
+      allow write: if hasRole('admin') || hasRole('teacher');
+    }
+
+    match /volunteer_applications/{appId} {
+      allow read: if request.auth != null && (
+        (resource != null && (resource.data.studentId == request.auth.uid || resource.data.uid == request.auth.uid)) ||
+        hasRole('admin') || hasRole('teacher')
+      );
+      allow create: if request.auth != null && 
+                    (request.resource.data.studentId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+      allow update, delete: if hasRole('admin') || hasRole('teacher');
+    }
+
     match /electricity_records/{recordId} {
-      allow read: if true; // Dashboard is public
+      allow read: if true;
       allow create: if request.auth != null && isActive();
-      allow update, delete: if hasRole('admin') || 
-                            (resource.data.created_by == request.auth.uid);
+      allow update, delete: if hasRole('admin') || (resource.data.created_by == request.auth.uid);
     }
 
-    // Waste-Management-System: Waste Records
     match /waste_records/{recordId} {
-      allow read: if true; // Dashboard is public
+      allow read: if true;
       allow create: if request.auth != null && isActive();
-      allow update, delete: if hasRole('admin') || 
-                            (resource.data.created_by == request.auth.uid);
+      allow update, delete: if hasRole('admin') || (resource.data.created_by == request.auth.uid);
     }
 
-    // Global default: deny all
+    // Student Care Module: sdqTokens
+    match /sdqTokens/{token} {
+      allow get: if exists(/databases/$(database)/documents/sdqTokens/$(token))
+                  && resource.data.expiresAt > request.time
+                  && resource.data.usedAt == null;
+      allow create: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
+      allow update: if (request.auth != null && (hasRole('admin') || hasRole('teacher'))) ||
+                    (exists(/databases/$(database)/documents/sdqTokens/$(token)) &&
+                     resource.data.expiresAt > request.time &&
+                     resource.data.usedAt == null &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedAt']) &&
+                     request.resource.data.usedAt == request.time);
+      allow delete: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
+    }
+
+    // Student Care Module: careCases & sdqAssessments
+    match /careCases/{caseId} {
+      allow read: if request.auth != null && (
+        hasRole('admin') || 
+        hasRole('teacher') || 
+        resource.data.studentId == request.auth.uid ||
+        request.auth.uid in resource.data.get('sharedWith', [])
+      );
+      allow write: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
+
+      match /sdqAssessments/{assessmentId} {
+        allow read: if request.auth != null && (
+          hasRole('admin') || 
+          hasRole('teacher') || 
+          get(/databases/$(database)/documents/careCases/$(caseId)).data.studentId == request.auth.uid ||
+          request.auth.uid in get(/databases/$(database)/documents/careCases/$(caseId)).data.get('sharedWith', [])
+        );
+        allow create: if (request.auth != null && (
+          hasRole('admin') || 
+          hasRole('teacher') || 
+          get(/databases/$(database)/documents/careCases/$(caseId)).data.studentId == request.auth.uid
+        )) || (request.resource.data.completedBy == 'parent_token');
+        allow update, delete: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
+      }
+    }
+
+    // Student Care Module: homeVisits
+    match /homeVisits/{visitId} {
+      allow read: if request.auth != null && (
+        hasRole('admin') || 
+        hasRole('teacher') || 
+        resource.data.studentId == request.auth.uid
+      );
+      allow create, update, delete: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
