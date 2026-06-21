@@ -25,3 +25,12 @@ dist-ssr
 *.sw?
 
 service-account.json
+
+# Backups
+backups/
+
+# Firebase Emulator Logs
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*.emulator.log

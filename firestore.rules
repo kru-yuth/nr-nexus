@@ -38,6 +38,26 @@ service cloud.firestore {
            : null;
     }
 
+    // Helper function to check if requester is the homeroom teacher of the student
+    function isHomeroomTeacherOf(studentData) {
+      let teacherData = getUserData();
+      return teacherData != null &&
+             teacherData.get('homeroomClass', '') != '' &&
+             studentData.get('level', '') != '' &&
+             studentData.get('class', '') != '' &&
+             teacherData.get('homeroomClass', '') == (studentData.get('level', '') + '/' + studentData.get('class', ''));
+    }
+
+    // Helper function to check if user has access to a CareCase
+    function canAccessCase(caseData) {
+      return request.auth != null && (
+        hasRole('admin') ||
+        hasRole('teacher') ||
+        caseData.studentId == request.auth.uid ||
+        request.auth.uid in caseData.get('sharedWith', [])
+      );
+    }
+
     // Users Collection
     match /users/{userId} {
       // Identity Check: Check if this document belongs to the requester using 3 patterns
@@ -54,15 +74,6 @@ service cloud.firestore {
         );
       }
 
-      // Helper function to check if requester is the homeroom teacher of the student
-      function isHomeroomTeacherOf(studentData) {
-        let teacherData = getUserData();
-        return teacherData != null &&
-               teacherData.get('homeroomClass', '') != '' &&
-               studentData.get('level', '') != '' &&
-               studentData.get('class', '') != '' &&
-               teacherData.get('homeroomClass', '') == (studentData.get('level', '') + '/' + studentData.get('class', ''));
-      }
 
       allow get: if request.auth != null && (
         isOwner() ||
@@ -250,30 +261,35 @@ service cloud.firestore {
       allow delete: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
     }
 
-    // Student Care Module: careCases & sdqAssessments
+    // Student Care Module: careCases
     match /careCases/{caseId} {
-      allow read: if request.auth != null && (
-        hasRole('admin') || 
-        hasRole('teacher') || 
-        resource.data.studentId == request.auth.uid ||
-        request.auth.uid in resource.data.get('sharedWith', [])
-      );
+      allow read: if canAccessCase(resource.data);
       allow write: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
+    }
 
-      match /sdqAssessments/{assessmentId} {
-        allow read: if request.auth != null && (
-          hasRole('admin') || 
-          hasRole('teacher') || 
-          get(/databases/$(database)/documents/careCases/$(caseId)).data.studentId == request.auth.uid ||
-          request.auth.uid in get(/databases/$(database)/documents/careCases/$(caseId)).data.get('sharedWith', [])
-        );
-        allow create: if (request.auth != null && (
-          hasRole('admin') || 
-          hasRole('teacher') || 
-          get(/databases/$(database)/documents/careCases/$(caseId)).data.studentId == request.auth.uid
-        )) || (request.resource.data.completedBy == 'parent_token');
-        allow update, delete: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
-      }
+    // Student Care Module: sdqAssessments
+    match /sdqAssessments/{sdqId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.studentId ||
+        isHomeroomTeacherOf(get(/databases/$(database)/documents/users/$(resource.data.studentId)).data) ||
+        (resource.data.careCaseId != null &&
+         canAccessCase(get(/databases/$(database)/documents/careCases/$(resource.data.careCaseId)).data)) ||
+        hasRole('admin')
+      );
+
+      allow create: if (request.auth != null && (
+        (request.resource.data.informantType == 'student' &&
+         request.auth.uid == request.resource.data.studentId) ||
+        (request.resource.data.informantType == 'teacher' &&
+         isHomeroomTeacherOf(get(/databases/$(database)/documents/users/$(request.resource.data.studentId)).data))
+      ) && request.resource.data.completedBy == request.auth.uid) || (request.resource.data.completedBy == 'parent_token');
+
+      allow update: if request.auth != null && (
+        isHomeroomTeacherOf(get(/databases/$(database)/documents/users/$(resource.data.studentId)).data) ||
+        hasRole('admin')
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['careCaseId', 'updatedAt']);
+
+      allow delete: if hasRole('admin');
     }
 
     // Student Care Module: homeVisits
