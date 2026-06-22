@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { db } from './src/services/firebase.js';
-import { collection, getDocs, doc, setDoc, query, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
 
 // Configuration
 const CSV_PATH = './imported_students_ready2.csv';
@@ -11,7 +11,6 @@ const syncUsers = async () => {
     try {
         const fileContent = fs.readFileSync(CSV_PATH, 'utf8');
         const lines = fileContent.split('\n').filter(line => line.trim());
-        const header = lines[0].split(',');
         const rows = lines.slice(1);
 
         console.log(`📊 Found ${rows.length} records in CSV.`);
@@ -107,6 +106,10 @@ const syncUsers = async () => {
     }
 };
 
+
 // Note: This is a template for the sync script. 
 // In a real CLI environment, we'd handle Firebase Admin or Auth differently.
 // For this session, I will simulate this cleanup via the userService.
+
+syncUsers();
+

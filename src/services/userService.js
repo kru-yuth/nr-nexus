@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 import {
     collection,
     getDocs,
@@ -6,13 +6,22 @@ import {
     doc,
     setDoc,
     query,
-    orderBy,
     where,
     updateDoc,
     writeBatch,
     limit,
-    deleteDoc
+    deleteDoc,
+    serverTimestamp
 } from "firebase/firestore";
+
+// NR Nexus Permission System — Discord-style
+// Format: "{module}.{action}"
+// discipline.read  → view only
+// discipline.write → full control (includes read)
+// attendance.read  → (future)
+// attendance.write → (future)
+// grades.read      → (future)
+// grades.write     → (future)
 
 /**
  * Helper function to normalize roles from various legacy formats to a single array.
@@ -51,13 +60,18 @@ export const normalizeUserData = (docId, rawData) => {
 
     const email = (rawData.email || rawData.Email || "").toLowerCase().trim();
     const roles = normalizeRoles(rawData);
-    const prefix = (rawData.prefix || rawData.Title || "").toString().trim();
+    const prefix = (rawData.prefix || rawData.Prefix || rawData.Title || "").toString().trim();
     const firstName = (rawData.firstName || rawData.FirstName || "").toString().trim();
     const lastName = (rawData.lastName || rawData.LastName || "").toString().trim();
     
     // Construct name if missing, handle all variants
     const name = rawData.name || rawData.displayName || rawData.Name || 
                  `${prefix}${firstName} ${lastName}`.trim() || "Unknown";
+
+    let updatedAt = rawData.updatedAt || null;
+    if (updatedAt && typeof updatedAt.toDate === 'function') {
+        updatedAt = updatedAt.toDate().toISOString();
+    }
 
     return {
         id: docId,
@@ -77,7 +91,8 @@ export const normalizeUserData = (docId, rawData) => {
         studentId: (rawData.studentId || rawData.StudentID || "").toString().trim(),
         batchYear: (rawData.batchYear || "").toString().trim(),
         citizenId: (rawData.citizenId || "").toString().trim(),
-        updatedAt: rawData.updatedAt || null
+        homeroomClass: (rawData.homeroomClass || "").toString().trim(),
+        updatedAt
     };
 };
 
@@ -223,6 +238,8 @@ export const addNewUser = async (userData) => {
             class: userData.class || '',
             level: userData.level || '',
             gender: userData.gender || '',
+            prefix: userData.prefix || '',
+            studentId: userData.studentId || '',
             uid: userData.uid || "",
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -238,31 +255,50 @@ export const addNewUser = async (userData) => {
 };
 
 /**
- * Updates an existing user's data.
+ * Helper to remove undefined or null values from an object.
  */
+const removeUndefined = (obj) =>
+    Object.fromEntries(
+        Object.entries(obj).filter(([, v]) => v !== undefined && v !== null)
+    );
+
 export const updateUser = async (userId, userData) => {
     try {
-        const roles = Array.isArray(userData.roles) ? userData.roles : [userData.role || 'student'];
-        const cleanRoles = [...new Set(roles.map(r => r ? String(r).toLowerCase().trim() : '').filter(r => r !== ''))];
+        const userRef = doc(db, "users", userId);
         
-        const primaryRole = cleanRoles.length > 0 ? cleanRoles[0] : 'student';
+        // Fetch existing data to preserve fields like status
+        const snap = await getDoc(userRef);
+        const existing = snap.exists() ? snap.data() : {};
 
-        const updates = {
+        // Merge roles if provided, otherwise keep existing
+        let cleanRoles = existing.roles || [];
+        let primaryRole = existing.role || 'student';
+
+        if (userData.roles || userData.role || userData.Role) {
+            const rolesInput = Array.isArray(userData.roles) ? userData.roles : [userData.role || userData.Role];
+            cleanRoles = [...new Set(rolesInput.map(r => r ? String(r).toLowerCase().trim() : '').filter(r => r !== ''))];
+            if (cleanRoles.length > 0) primaryRole = cleanRoles[0];
+        }
+
+        const updateData = removeUndefined({
             displayName: userData.name || userData.displayName,
-            email: userData.email,
-            roles: cleanRoles,
-            permissions: Array.isArray(userData.permissions) ? userData.permissions : [],
-            role: primaryRole, // Sync legacy field
-            Role: primaryRole, // Sync legacy field
-            status: userData.status,
-            batchYear: userData.batchYear || '',
-            class: userData.class || '',
-            level: userData.level || '',
-            gender: userData.gender || '',
-            updatedAt: new Date().toISOString()
-        };
+            email: userData.email || (userData.email === undefined ? auth.currentUser?.email : undefined),
+            roles: cleanRoles.length > 0 ? cleanRoles : undefined,
+            role: primaryRole,
+            Role: primaryRole,
+            permissions: userData.permissions,
+            status: userData.status ?? existing.status ?? "active",
+            batchYear: userData.batchYear,
+            class: userData.class,
+            level: userData.level,
+            gender: userData.gender,
+            prefix: userData.prefix,
+            studentId: userData.studentId,
+            citizenId: userData.citizenId,
+            updatedAt: serverTimestamp()
+        });
 
-        await updateDoc(doc(db, "users", userId), updates);
+        await updateDoc(userRef, updateData);
     } catch (error) {
         console.error("Error updating user:", error);
         throw error;
@@ -346,6 +382,7 @@ export const bulkAddUsers = async (usersArray) => {
                 batchYear: (user.batchYear || '2568').toString(),
                 level: (user.level || '').toString(),
                 gender: (user.gender || '').toString(),
+                prefix: (user.prefix || '').toString(),
                 studentId: (user.studentId || '').toString(),
                 citizenId: (user.citizenId || '').toString(),
                 uid: user.uid || "",

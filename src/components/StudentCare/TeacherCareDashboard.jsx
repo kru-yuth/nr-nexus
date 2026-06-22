@@ -24,16 +24,14 @@ export default function TeacherCareDashboard() {
 
     const schoolYear = "2569"; // Current academic year as configured
 
-    const getHomeroomInfo = () => {
+    const room = React.useMemo(() => {
         if (!currentUser?.homeroomClass) return null;
         if (currentUser.homeroomClass.includes('/')) {
             const [l, c] = currentUser.homeroomClass.split('/');
             return { level: l, class: c, full: currentUser.homeroomClass };
         }
         return { level: currentUser.level, class: currentUser.homeroomClass, full: `${currentUser.level}/${currentUser.homeroomClass}` };
-    };
-
-    const room = getHomeroomInfo();
+    }, [currentUser]);
 
     useEffect(() => {
         const loadDashboardData = async () => {
@@ -51,7 +49,7 @@ export default function TeacherCareDashboard() {
         };
 
         loadDashboardData();
-    }, [currentUser]);
+    }, [room, t]);
 
     if (!room) {
         return (
@@ -119,6 +117,18 @@ export default function TeacherCareDashboard() {
 
     const handleAssess = (student) => {
         navigate(`/student-care/sdq/teacher/${student.studentId}?schoolYear=${schoolYear}`);
+    };
+
+    const handleUpdateParentLink = (studentId, newLink) => {
+        setSummary(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                studentRiskList: prev.studentRiskList.map(s => 
+                    s.studentId === studentId ? { ...s, parentLink: newLink } : s
+                )
+            };
+        });
     };
 
     return (
@@ -276,6 +286,7 @@ export default function TeacherCareDashboard() {
                                             requires9Q={student.requires9Q}
                                             onViewDetail={() => handleViewDetail(student)}
                                             onAssess={() => handleAssess(student)}
+                                            onGenerateParentLink={(newLink) => handleUpdateParentLink(student.studentId, newLink)}
                                         />
                                     ))
                                 ) : (

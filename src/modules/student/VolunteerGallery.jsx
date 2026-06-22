@@ -1,60 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { fetchAvailableJobs, fetchStudentApplications, applyForJob } from '../../services/volunteerService';
 import Navbar from '../../components/common/Navbar';
-import { Calendar, MapPin, Users, Star, RefreshCw, CheckCircle, Clock } from 'lucide-react';
+import { Calendar, MapPin, Users, Star, RefreshCw, CheckCircle, Clock, HeartHandshake, ChevronRight, Sparkles } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const VolunteerGallery = () => {
-    const { profileData, user } = useAuth();
+    const { user } = useAuth();
     const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState('gallery'); // 'gallery' | 'my-jobs'
     const [jobs, setJobs] = useState([]);
     const [myApplications, setMyApplications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [applyingId, setApplyingId] = useState(null);
-    const [toast, setToast] = useState(null);
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const [fetchedJobs, fetchedApps] = await Promise.all([
                 fetchAvailableJobs(),
-                profileData?.id ? fetchStudentApplications(profileData.id) : []
+                user?.id ? fetchStudentApplications(user.id) : []
             ]);
             setJobs(fetchedJobs);
             setMyApplications(fetchedApps);
         } catch (error) {
             console.error("Error loading data:", error);
-            showToast(t('load_jobs_error'), "error");
+            toast.error(t('load_jobs_error'));
         } finally {
             setLoading(false);
         }
-    };
+    }, [user?.id, t]);
 
     useEffect(() => {
-        if (profileData?.id) {
+        if (user?.id) {
             loadData();
         }
-    }, [profileData]);
-
-    const showToast = (message, type = 'success') => {
-        setToast({ message, type });
-        setTimeout(() => setToast(null), 3000);
-    };
+    }, [user?.id, loadData]);
 
     const handleApply = async (job) => {
-        if (!profileData?.id) return;
+        if (!user?.id) return;
 
         setApplyingId(job.id);
+        const toastId = toast.loading(t('processing'));
         try {
-            const studentName = `${profileData.FirstName || ''} ${profileData.LastName || ''}`.trim() || user.email;
-            await applyForJob(job.id, profileData.id, studentName);
-            showToast(t('application_success'));
+            const studentName = user.name || user.email;
+            await applyForJob(job.id, user.id, studentName);
+            toast.success(t('application_success'), { id: toastId });
             await loadData();
         } catch (error) {
             console.error("Application failed:", error);
-            showToast(typeof error === 'string' ? error : t('app_error_generic'), "error");
+            toast.error(typeof error === 'string' ? error : t('app_error_generic'), { id: toastId });
         } finally {
             setApplyingId(null);
         }
@@ -65,52 +61,59 @@ const VolunteerGallery = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <Navbar showBack={false} />
-            <div className="max-w-7xl mx-auto p-4 md:p-8">
+        <div className="min-h-screen bg-slate-50 pb-20">
+            <Navbar showBack={true} />
+            
+            <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-12">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-800">{t('volunteer_opportunities')}</h1>
-                        <p className="text-gray-500 mt-1">{t('discover_jobs_desc')}</p>
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-8">
+                    <div className="flex items-center gap-5">
+                        <div className="p-4 bg-emerald-600 rounded-3xl shadow-xl shadow-emerald-200 text-white">
+                            <HeartHandshake size={40} />
+                        </div>
+                        <div>
+                            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight uppercase italic">{t('volunteer_opportunities')}</h1>
+                            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-1">{t('discover_jobs_desc')}</p>
+                        </div>
                     </div>
 
-                    <div className="flex items-center gap-4 bg-white p-1 rounded-lg shadow-sm">
+                    <div className="flex items-center w-full lg:w-auto p-1.5 bg-slate-200/50 rounded-2xl md:rounded-[1.5rem] shadow-inner backdrop-blur-sm">
                         <button
                             onClick={() => setActiveTab('gallery')}
-                            className={`px-4 py-2 rounded-md transition-all ${activeTab === 'gallery' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                            className={`flex-1 lg:px-8 py-3 rounded-[1.25rem] font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'gallery' ? 'bg-white text-emerald-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
                         >
                             {t('gallery')}
                         </button>
                         <button
                             onClick={() => setActiveTab('my-jobs')}
-                            className={`px-4 py-2 rounded-md transition-all ${activeTab === 'my-jobs' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                            className={`flex-1 lg:px-8 py-3 rounded-[1.25rem] font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'my-jobs' ? 'bg-white text-emerald-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
                         >
                             {t('my_jobs')} ({myApplications.length})
                         </button>
                     </div>
                 </div>
 
-                {/* Refresh & Status */}
-                <div className="flex justify-end mb-6">
+                {/* Content Area */}
+                <div className="mb-8 flex justify-end">
                     <button
                         onClick={loadData}
-                        className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 transition-colors"
+                        disabled={loading}
+                        className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-900 transition-all shadow-sm"
                     >
-                        <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+                        <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                         {t('refresh_data')}
                     </button>
                 </div>
 
-                {/* Content */}
                 {loading && jobs.length === 0 ? (
-                    <div className="flex justify-center items-center h-64">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                    <div className="flex flex-col items-center justify-center h-96 opacity-30 animate-pulse">
+                        <Sparkles size={64} className="mb-6 text-slate-300" />
+                        <p className="font-black text-xs uppercase tracking-[0.3em]">{t('loading')}</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
                         {activeTab === 'gallery' ? (
-                            jobs.map(job => (
+                            jobs.map((job, idx) => (
                                 <JobCard
                                     key={job.id}
                                     job={job}
@@ -118,17 +121,21 @@ const VolunteerGallery = () => {
                                     onApply={() => handleApply(job)}
                                     applying={applyingId === job.id}
                                     t={t}
+                                    idx={idx}
                                 />
                             ))
                         ) : (
-                            myApplications.map(app => {
+                            myApplications.map((app, idx) => {
                                 const job = jobs.find(j => j.id === app.jobId);
                                 return job ? (
-                                    <JobCard key={app.id} job={job} applied={true} readOnly={true} t={t} />
+                                    <JobCard key={app.id} job={job} applied={true} readOnly={true} t={t} idx={idx} />
                                 ) : (
-                                    <div key={app.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                        <p className="text-gray-500 italic">Job details unavailable</p>
-                                        <p className="text-xs text-gray-400">{t('applied_on')}: {app.appliedAt?.toDate().toLocaleDateString()}</p>
+                                    <div key={app.id} className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-50 flex flex-col items-center text-center animate-in fade-in zoom-in duration-500">
+                                        <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200 mb-6">
+                                            <XCircle size={32} />
+                                        </div>
+                                        <p className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2 italic">Job details unavailable</p>
+                                        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{t('applied_on')}: {app.appliedAt?.toDate().toLocaleDateString()}</p>
                                     </div>
                                 );
                             })
@@ -137,98 +144,109 @@ const VolunteerGallery = () => {
                 )}
 
                 {!loading && activeTab === 'gallery' && jobs.length === 0 && (
-                    <div className="text-center py-12 text-gray-400">
-                        {t('no_active_jobs')}
+                    <div className="flex flex-col items-center justify-center py-40 opacity-20">
+                        <HeartHandshake size={80} className="mb-8" />
+                        <h3 className="text-2xl font-black uppercase tracking-tighter italic">{t('no_active_jobs')}</h3>
+                        <p className="font-bold text-xs uppercase tracking-[0.2em] mt-2">{t('check_back_later')}</p>
                     </div>
                 )}
 
                 {!loading && activeTab === 'my-jobs' && myApplications.length === 0 && (
-                    <div className="text-center py-12 text-gray-400">
-                        {t('no_applications_yet')}
+                    <div className="flex flex-col items-center justify-center py-40 opacity-20">
+                        <Calendar size={80} className="mb-8" />
+                        <h3 className="text-2xl font-black uppercase tracking-tighter italic">{t('no_applications_yet')}</h3>
+                        <p className="font-bold text-xs uppercase tracking-[0.2em] mt-2">{t('browse_gallery')}</p>
                     </div>
                 )}
             </div>
-
-            {/* Toast Notification */}
-            {toast && (
-                <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white transform transition-all duration-300 z-50 ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
-                    {toast.message}
-                </div>
-            )}
         </div>
     );
 };
 
-// Sub-component for Job Card
-const JobCard = ({ job, applied, onApply, applying, readOnly = false, t }) => {
+// Touch-friendly Job Card
+const JobCard = ({ job, applied, onApply, applying, readOnly = false, t, idx }) => {
     const isFull = job.remainingSlots <= 0;
     const canApply = !applied && !isFull && !readOnly;
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200 overflow-hidden flex flex-col">
-            <div className="p-6 flex-1">
-                <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-bold text-gray-900 leading-tight line-clamp-2">{job.title}</h3>
-                    <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200 border border-slate-100 hover:shadow-emerald-100 hover:-translate-y-2 transition-all duration-500 overflow-hidden flex flex-col group animate-in slide-in-from-bottom-8 fade-in" style={{ animationDelay: `${idx * 100}ms` }}>
+            <div className="p-8 md:p-10 flex-1 flex flex-col">
+                <div className="flex justify-between items-start mb-6">
+                    <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600">
+                        <Sparkles size={20} />
+                    </div>
+                    <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black shadow-sm group-hover:scale-110 transition-transform">
                         <Star size={12} fill="currentColor" />
                         +{job.points} {t('points')}
-                    </span>
+                    </div>
                 </div>
 
-                <div className="space-y-3 mb-6">
-                    <div className="flex items-center text-gray-600 text-sm">
-                        <Users size={16} className="mr-2 text-green-500" />
-                        <span className="font-medium mr-1">{t('supervisor')}:</span> {job.supervisor || "N/A"}
+                <h3 className="text-2xl font-black text-slate-900 leading-tight mb-8 group-hover:text-emerald-700 transition-colors line-clamp-3 italic uppercase">{job.title}</h3>
+
+                <div className="space-y-4 mt-auto">
+                    <div className="flex items-center gap-4 text-slate-400 group-hover:text-slate-600 transition-colors">
+                        <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                            <Users size={14} className="text-emerald-500" />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-slate-300 leading-none mb-1">{t('supervisor_label')}</span>
+                            <span className="text-xs font-black uppercase tracking-tight">{job.supervisor || "N/A"}</span>
+                        </div>
                     </div>
-                    <div className="flex items-center text-gray-600 text-sm">
-                        <MapPin size={16} className="mr-2 text-green-500" />
-                        <span className="truncate">{job.location || "TBA"}</span>
+                    
+                    <div className="flex items-center gap-4 text-slate-400 group-hover:text-slate-600 transition-colors">
+                        <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                            <MapPin size={14} className="text-emerald-500" />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-slate-300 leading-none mb-1">{t('location')}</span>
+                            <span className="text-xs font-black uppercase tracking-tight truncate max-w-[200px]">{job.location || "TBA"}</span>
+                        </div>
                     </div>
-                    <div className="flex items-center text-gray-600 text-sm">
-                        <Calendar size={16} className="mr-2 text-green-500" />
-                        <span>{job.date || "Date TBA"}</span>
+
+                    <div className="flex items-center gap-4 text-slate-400 group-hover:text-slate-600 transition-colors">
+                        <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                            <Clock size={14} className="text-emerald-500" />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-slate-300 leading-none mb-1">{t('date_time')}</span>
+                            <span className="text-xs font-black uppercase tracking-tight italic">{job.date || "Date TBA"}</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-between items-center">
-                <div className="text-sm">
-                    <span className={`font-semibold ${isFull ? 'text-red-500' : 'text-green-600'}`}>
-                        {job.remainingSlots}
-                    </span>
-                    <span className="text-gray-500"> / {job.totalSlots || "?"} {t('slots')} {t('remaining')}</span>
+            <div className="bg-slate-50/80 px-8 py-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-6 group-hover:bg-emerald-50/30 transition-colors">
+                <div className="flex flex-col items-center sm:items-start">
+                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('remaining_slots')}</span>
+                    <div className="flex items-baseline gap-1">
+                        <span className={`text-xl font-black tabular-nums ${isFull ? 'text-rose-500' : 'text-emerald-600'}`}>{job.remainingSlots}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">/ {job.totalSlots || "?"} {t('slots')}</span>
+                    </div>
                 </div>
 
                 {!readOnly && (
                     <button
                         onClick={onApply}
                         disabled={!canApply || applying}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2
+                        className={`w-full sm:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl
                             ${applied
-                                ? 'bg-green-100 text-green-700 cursor-not-allowed'
+                                ? 'bg-emerald-100 text-emerald-700 cursor-not-allowed shadow-none'
                                 : isFull
-                                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                    : 'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow'
+                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                    : 'bg-slate-900 text-white hover:bg-emerald-600 hover:-translate-y-1 active:translate-y-0 active:scale-95'
                             }
                             ${applying ? 'opacity-70 cursor-wait' : ''}
                         `}
                     >
-                        {applying ? (
-                            <>{t('processing')}</>
-                        ) : applied ? (
-                            <><CheckCircle size={16} /> {t('applied_status')}</>
-                        ) : isFull ? (
-                            t('full_status')
-                        ) : (
-                            t('apply_now')
-                        )}
+                        {applying ? t('processing') : applied ? t('applied_status') : isFull ? t('full_status') : t('apply_now')}
                     </button>
                 )}
 
                 {readOnly && (
-                    <span className="px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-700 cursor-default flex items-center gap-2">
+                    <div className="w-full sm:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] bg-emerald-100 text-emerald-700 flex items-center justify-center gap-3 italic">
                         <CheckCircle size={16} /> {t('registered_status')}
-                    </span>
+                    </div>
                 )}
             </div>
         </div>

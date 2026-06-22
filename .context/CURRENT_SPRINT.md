@@ -1,9 +1,16 @@
 # Current Sprint — 4 มิ.ย. 2569
 ## กำลังทำ
 - [ ] Migrate components ให้ใช้ Design System
-- [ ] Implement separate leave counts in Attendance analytics
 
 ## เสร็จแล้ว
+- [x] Fixed anonymous parent SDQ page loads in incognito mode by correcting the Firestore security rules check on the missing `usedAt` field (using a default getter fallback to prevent rules evaluator crashes) and verified token retrieval.
+- [x] Implemented teacher-generated parent SDQ token links, displaying them appended to student names in the teacher dashboard, and integrated parent links into the student's SDQ page views.
+- [x] Added SDQ Assessment card/widget to the Student Dashboard and fixed Firestore query index requirements for student SDQ assessments and home visits using client-side sorting.
+- [x] Fixed Firestore index errors in SDQ/CareCase queries by using client-side sorting, bypassing index requirements and preventing submission failures.
+- [x] Added customized SDQ submission feedback and exit flows (Student & Parent exit window/log out, Teacher returns to Student Care dashboard to evaluate the next student).
+- [x] Implemented separate leave counts (Personal Leave vs. Sick Leave) in Attendance analytics across the Student, Teacher, and Admin modules.
+- [x] Cleaned up all project-wide ESLint errors/warnings (duplicate keys, unused variables, hooks dependencies) ensuring build passes successfully.
+- [x] Integrated official DMH SDQ items, scoring subscales, band thresholds, range-based calculations, and updated Thai band terminology ("กลุ่มเสี่ยง" / "กลุ่มปัญหา").
 - [x] Refactored SDQ Assessments to top-level collection to support independent screening without requiring an active CareCase, and added case linking capability.
 - [x] Implemented client-side PDF Reports (Individual + Class Summary) in the Student Care (SDQ) module using `@react-pdf/renderer` with Thai Sarabun font support.
 - [x] Fixed homeroom query mismatches in careService.js (level and class parsing) and resolved Firestore security rules crash conditions.

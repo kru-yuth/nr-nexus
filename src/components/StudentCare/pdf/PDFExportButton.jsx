@@ -37,7 +37,7 @@ export default function PDFExportButton({ type, data, fileName, className }) {
 
     return (
         <PDFDownloadLink document={doc} fileName={fileName} style={{ textDecoration: 'none' }}>
-            {({ blob, url, loading, error }) => (
+            {({ loading }) => (
                 <Button
                     type="button"
                     variant="secondary"

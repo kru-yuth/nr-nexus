@@ -2,24 +2,18 @@ import { db } from "./firebase";
 import { 
     doc, 
     getDoc, 
-    setDoc, 
-    updateDoc, 
     collection, 
     query, 
     where, 
     getDocs, 
-    writeBatch, 
     serverTimestamp,
     orderBy,
-    limit,
-    onSnapshot
+    onSnapshot,
+    runTransaction
 } from "firebase/firestore";
 
 /**
  * Calculates deduction based on time.
- * 08.00 - 08.29 -> 5 pts (late_minor)
- * 08.30 - 09.29 -> 10 pts (late_major)
- * 09.30+ -> closed
  */
 export const getLateDeduction = (now = new Date()) => {
     const hours = now.getHours();
@@ -29,14 +23,11 @@ export const getLateDeduction = (now = new Date()) => {
     const start800 = 8 * 60;
     const end829 = 8 * 60 + 29;
     const start830 = 8 * 60 + 30;
-    const end929 = 9 * 60 + 29;
 
     if (totalMinutes >= start800 && totalMinutes <= end829) {
         return { points: 5, status: "late_minor", label: "08:00 - 08:29 (สายระยะแรก)" };
-    } else if (totalMinutes >= start830 && totalMinutes <= end929) {
-        return { points: 10, status: "late_major", label: "08:30 - 09:29 (สายมาก)" };
-    } else if (totalMinutes >= 9 * 60 + 30) {
-        return { points: null, status: "closed", label: "หมดเวลาเช็คสาย (09:30+)" };
+    } else if (totalMinutes >= start830) {
+        return { points: 10, status: "late_major", label: "08:30 เป็นต้นไป (สายมาก)" };
     }
     return { points: 0, status: "early", label: "ยังไม่ถึงเวลาเช็คสาย" };
 };
@@ -75,7 +66,7 @@ export const getMonthLateCount = async (uid) => {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const monthPrefix = `${year}-${month}`; // e.g. "2026-05"
+    const monthPrefix = `${year}-${month}`;
 
     const q = query(
         collection(db, "late_checkins"), 
@@ -89,19 +80,17 @@ export const getMonthLateCount = async (uid) => {
 };
 
 /**
- * Atomic batch operation to record late check-in and update behavior score.
- * Implements 3-warning grace period for 08:00-08:29.
+ * Atomic transaction operation to record late check-in and update behavior score.
  */
 export const processLateCheckin = async (user) => {
     const { points: rawPoints, status: rawStatus } = getLateDeduction();
     
-    if (rawStatus === "closed") throw new Error("Check-in is closed after 09:30.");
     if (rawStatus === "early") throw new Error("Check-in opens at 08:00.");
 
     const date = new Date().toISOString().split('T')[0];
     const docId = `${user.uid}_${date}`;
     
-    // 0. Grace Period Logic
+    // Grace Period Logic
     let points = rawPoints;
     let status = rawStatus;
     let isWarning = false;
@@ -116,60 +105,102 @@ export const processLateCheckin = async (user) => {
         }
     }
 
-    const batch = writeBatch(db);
-    
-    // 1. Create Late Check-in Record
     const checkinRef = doc(db, "late_checkins", docId);
-    batch.set(checkinRef, {
-        studentId: user.uid,
-        studentEmail: user.email,
-        date: date,
-        checkInTime: serverTimestamp(),
-        deductedScore: points,
-        status: status,
-        recordedBy: "self",
-        note: isWarning ? `Warning ${warningCount + 1}/3` : ""
-    });
-
-    // 2. Behavior Score Management
     const scoreRef = doc(db, "behavior_scores", user.uid);
-    const scoreSnap = await getDoc(scoreRef);
-    
-    let currentScore = 100;
-    if (scoreSnap.exists()) {
-        currentScore = scoreSnap.data().currentScore;
-        batch.update(scoreRef, {
-            currentScore: currentScore - points,
-            updatedAt: serverTimestamp()
-        });
-    } else {
-        // First time initialization
-        batch.set(scoreRef, {
-            currentScore: 100 - points,
-            updatedAt: serverTimestamp()
-        });
-    }
-
-    // 3. Add History Entry
     const historyRef = doc(collection(db, "behavior_scores", user.uid, "history"));
-    batch.set(historyRef, {
-        date: date,
-        change: -points,
-        reason: isWarning ? `มาสาย (เตือนครั้งที่ ${warningCount + 1}/3)` : `เช็คชื่อมาสาย (${status === "late_major" ? "10 คะแนน" : "5 คะแนน"})`,
-        recordedBy: "self",
-        note: isWarning ? positiveMessages[Math.floor(Math.random() * positiveMessages.length)] : "",
-        createdAt: serverTimestamp()
-    });
 
-    await batch.commit();
-    return { 
-        oldScore: currentScore,
-        newScore: currentScore - points, 
-        deduction: points,
-        status: status,
-        warningCount: isWarning ? warningCount + 1 : null,
-        message: isWarning ? positiveMessages[Math.floor(Math.random() * positiveMessages.length)] : null
-    };
+    return await runTransaction(db, async (transaction) => {
+        const scoreDoc = await transaction.get(scoreRef);
+        const currentScore = scoreDoc.exists() ? scoreDoc.data().currentScore : 100;
+        const newScore = Math.max(0, currentScore - points);
+
+        // Single set handles both create and update
+        transaction.set(scoreRef, {
+            currentScore: newScore,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // Record Late Check-in
+        transaction.set(checkinRef, {
+            studentId: user.uid,
+            studentEmail: user.email,
+            level: user.level || "",
+            class: user.class || "",
+            date: date,
+            checkInTime: serverTimestamp(),
+            deductedScore: points,
+            status: status,
+            recordedBy: "self",
+            note: isWarning ? `Warning ${warningCount + 1}/3` : ""
+        });
+
+        // Add History Entry
+        transaction.set(historyRef, {
+            date: date,
+            change: -points,
+            reason: isWarning ? `มาสาย (เตือนครั้งที่ ${warningCount + 1}/3)` : `เช็คชื่อมาสาย (${status === "late_major" ? "10 คะแนน" : "5 คะแนน"})`,
+            recordedBy: "self",
+            note: isWarning ? positiveMessages[Math.floor(Math.random() * positiveMessages.length)] : "",
+            createdAt: serverTimestamp()
+        });
+
+        return { 
+            oldScore: currentScore,
+            newScore: newScore, 
+            deduction: points,
+            status: status,
+            warningCount: isWarning ? warningCount + 1 : null,
+            message: isWarning ? positiveMessages[Math.floor(Math.random() * positiveMessages.length)] : null
+        };
+    });
+};
+
+/**
+ * Admin/Discipline: Records a manual late check-in for a student.
+ */
+export const recordManualLateCheckin = async (targetUser, status, note = "", adminUid) => {
+    const points = status === 'late_minor' ? 5 : status === 'late_major' ? 10 : 0;
+    const date = new Date().toISOString().split('T')[0];
+    const targetUid = targetUser.id || targetUser.uid;
+    const docId = `${targetUid}_${date}`;
+    
+    const checkinRef = doc(db, "late_checkins", docId);
+    const scoreRef = doc(db, "behavior_scores", targetUid);
+    const historyRef = doc(collection(db, "behavior_scores", targetUid, "history"));
+
+    await runTransaction(db, async (transaction) => {
+        const scoreDoc = await transaction.get(scoreRef);
+        const currentScore = scoreDoc.exists() ? scoreDoc.data().currentScore : 100;
+        const newScore = Math.max(0, currentScore - points);
+
+        transaction.set(scoreRef, {
+            currentScore: newScore,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        transaction.set(checkinRef, {
+            studentId: targetUid,
+            studentEmail: targetUser.email,
+            level: targetUser.level || "",
+            class: targetUser.class || "",
+            date: date,
+            checkInTime: serverTimestamp(),
+            deductedScore: points,
+            status: status,
+            recordedBy: "discipline",
+            recordedByUid: adminUid,
+            note: note
+        }, { merge: true });
+
+        transaction.set(historyRef, {
+            date: date,
+            change: -points,
+            reason: `บันทึกโดยฝ่ายปกครอง: ${status === 'late_minor' ? 'สายระยะแรก' : 'สายมาก'}`,
+            recordedBy: "discipline",
+            note: note,
+            createdAt: serverTimestamp()
+        });
+    });
 };
 
 /**
@@ -192,61 +223,75 @@ export const getBehaviorData = async (uid) => {
 };
 
 /**
- * Admin/Discipline: Records a manual late check-in for a student.
+ * Admin/Discipline: Updates an existing late check-in record and syncs score.
+ * Handles status changes, score adjustments, and cancellations.
  */
-export const recordManualLateCheckin = async (targetUser, status, note = "", adminUid) => {
-    const { points } = status === 'late_minor' ? { points: 5 } : 
-                       status === 'late_major' ? { points: 10 } : { points: 0 };
+export const updateLateCheckin = async (record, updates, adminUid) => {
+    const { status: newStatus, deductedScore: newPoints, note: editNote } = updates;
+    const oldPoints = record.status === 'cancelled' ? 0 : (record.deductedScore || 0);
+    const effectiveNewPoints = newStatus === 'cancelled' ? 0 : newPoints;
+    const studentId = record.studentId;
+    
+    const checkinRef = doc(db, "late_checkins", record.id);
+    const scoreRef = doc(db, "behavior_scores", studentId);
+    const historyRef = doc(collection(db, "behavior_scores", studentId, "history"));
 
-    const date = new Date().toISOString().split('T')[0];
-    const docId = `${targetUser.id || targetUser.uid}_${date}`;
-    
-    const batch = writeBatch(db);
-    
-    // 1. Create/Update Late Check-in Record
-    const checkinRef = doc(db, "late_checkins", docId);
-    batch.set(checkinRef, {
-        studentId: targetUser.id || targetUser.uid,
-        studentEmail: targetUser.email,
-        date: date,
-        checkInTime: serverTimestamp(),
-        deductedScore: points,
-        status: status,
-        recordedBy: "discipline",
-        recordedByUid: adminUid,
-        note: note
-    }, { merge: true });
+    await runTransaction(db, async (transaction) => {
+        const scoreDoc = await transaction.get(scoreRef);
+        // If it doesn't exist, we assume 100 base
+        const currentScore = scoreDoc.exists() ? scoreDoc.data().currentScore : 100;
+        
+        // Difference: if old was 10 and new is 5, we add 5 back (refund 10, subtract 5)
+        const finalScore = currentScore + oldPoints - effectiveNewPoints;
 
-    // 2. Behavior Score Management
-    const scoreRef = doc(db, "behavior_scores", targetUser.id || targetUser.uid);
-    const scoreSnap = await getDoc(scoreRef);
-    
-    let currentScore = 100;
-    if (scoreSnap.exists()) {
-        currentScore = scoreSnap.data().currentScore;
-        batch.update(scoreRef, {
-            currentScore: currentScore - points,
+        // 1. Update/Set Score
+        transaction.set(scoreRef, {
+            currentScore: finalScore,
             updatedAt: serverTimestamp()
-        });
-    } else {
-        batch.set(scoreRef, {
-            currentScore: 100 - points,
-            updatedAt: serverTimestamp()
-        });
-    }
+        }, { merge: true });
 
-    // 3. Add History Entry
-    const historyRef = doc(collection(db, "behavior_scores", targetUser.id || targetUser.uid, "history"));
-    batch.set(historyRef, {
-        date: date,
-        change: -points,
-        reason: `บันทึกโดยฝ่ายปกครอง: ${status === 'late_minor' ? 'สายระยะแรก' : 'สายมาก'}`,
-        recordedBy: "discipline",
-        note: note,
-        createdAt: serverTimestamp()
+        // 2. Update Check-in Record
+        transaction.update(checkinRef, {
+            status: newStatus,
+            deductedScore: effectiveNewPoints,
+            note: editNote,
+            editedBy: adminUid,
+            editedAt: serverTimestamp()
+        });
+
+        // 3. Add History Entry for the edit
+        transaction.set(historyRef, {
+            date: new Date().toISOString().split('T')[0],
+            change: oldPoints - effectiveNewPoints,
+            reason: newStatus === 'cancelled' 
+                ? `ยกเลิกรายการมาสาย (${record.date})` 
+                : `แก้ไขรายการมาสาย (${record.date}): ${newStatus}`,
+            recordedBy: "discipline",
+            recordedByUid: adminUid,
+            note: editNote,
+            createdAt: serverTimestamp()
+        });
     });
+};
 
-    await batch.commit();
+/**
+ * Discipline Admin: Get filtered late check-ins within a date range.
+ */
+export const getFilteredLateCheckins = (startDate, endDate, callback) => {
+    // Note: Requires composite index if we add orderBy(checkInTime)
+    const q = query(
+        collection(db, "late_checkins"), 
+        where("date", ">=", startDate),
+        where("date", "<=", endDate),
+        orderBy("date", "desc")
+    );
+    
+    return onSnapshot(q, (snapshot) => {
+        const records = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        callback(records);
+    }, (error) => {
+        console.error("Filtered Checkins Error:", error);
+    });
 };
 
 /**

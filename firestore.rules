@@ -248,14 +248,14 @@ service cloud.firestore {
 
     // Student Care Module: sdqTokens
     match /sdqTokens/{token} {
-      allow get: if exists(/databases/$(database)/documents/sdqTokens/$(token))
-                  && resource.data.expiresAt > request.time
-                  && resource.data.usedAt == null;
+      allow get: if request.auth != null || (
+                    resource.data.expiresAt > request.time &&
+                    resource.data.get('usedAt', null) == null
+                  );
       allow create: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
       allow update: if (request.auth != null && (hasRole('admin') || hasRole('teacher'))) ||
-                    (exists(/databases/$(database)/documents/sdqTokens/$(token)) &&
-                     resource.data.expiresAt > request.time &&
-                     resource.data.usedAt == null &&
+                    (resource.data.expiresAt > request.time &&
+                     resource.data.get('usedAt', null) == null &&
                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedAt']) &&
                      request.resource.data.usedAt == request.time);
       allow delete: if request.auth != null && (hasRole('admin') || hasRole('teacher'));

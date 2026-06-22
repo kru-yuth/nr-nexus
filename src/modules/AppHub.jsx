@@ -3,24 +3,68 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import Navbar from '../components/common/Navbar';
-import { Zap, Trash2, GraduationCap, ArrowRight, ShieldAlert, Clock } from 'lucide-react';
+import { Zap, Trash2, GraduationCap, ArrowRight, ShieldAlert, Clock, BookOpen, Heart } from 'lucide-react';
 
 const AppHub = () => {
     const { user, roles } = useAuth();
     const { t } = useLanguage();
     const isAdmin = roles.includes('admin');
+    const isTeacher = roles.includes('teacher');
+    const hasDisciplineRead = user?.permissions?.includes('discipline.read');
+    const hasDisciplineWrite = user?.permissions?.includes('discipline.write');
+    const hasAttendanceRead = user?.permissions?.includes('attendance.read');
+    
+    const canViewDiscipline = isAdmin || isTeacher || hasDisciplineRead || hasDisciplineWrite;
+    const canViewAttendanceAdmin = isAdmin || isTeacher || hasAttendanceRead;
+    const canWriteAttendance = isAdmin || isTeacher || hasAttendanceRead || user?.permissions?.includes('attendance.write');
 
     const apps = [
         {
-            id: 'late-checkin',
-            name: 'Late Check-in',
-            desc: 'ระบบเช็คชื่อมาสายและประวัติคะแนนพฤติกรรม',
+            id: 'student-care',
+            name: t('sdq_app_name'),
+            desc: t('sdq_app_desc'),
+            icon: Heart,
+            color: 'bg-rose-500',
+            textColor: 'text-rose-600',
+            bgLight: 'bg-rose-50',
+            link: roles.includes('teacher') ? '/teacher/homeroom/care' : (roles.includes('student') ? '/student' : '/'),
+            allowed: isAdmin || roles.includes('teacher') || roles.includes('student'),
+            external: false
+        },
+        {
+            id: 'attendance-checkin',
+            name: t('start_attendance'),
+            desc: t('late_checkin_app_desc'),
             icon: Clock,
             color: 'bg-[#1a5c38]',
             textColor: 'text-[#1a5c38]',
             bgLight: 'bg-emerald-50',
-            link: roles.includes('admin') ? '/admin-dashboard/late-checkin' : '/student/late-checkin',
-            allowed: roles.includes('admin') || roles.includes('student'),
+            link: '/teacher/attendance/checkin',
+            allowed: canWriteAttendance,
+            external: false
+        },
+        {
+            id: 'attendance',
+            name: t('attendance_analytics'),
+            desc: t('school_overview'),
+            icon: BookOpen,
+            color: 'bg-indigo-600',
+            textColor: 'text-indigo-600',
+            bgLight: 'bg-indigo-50',
+            link: canViewAttendanceAdmin ? '/admin-dashboard/attendance' : '/student/attendance',
+            allowed: canViewAttendanceAdmin || roles.includes('student'),
+            external: false
+        },
+        {
+            id: 'late-checkin',
+            name: t('late_checkin_app_name'),
+            desc: t('late_checkin_app_desc'),
+            icon: Clock,
+            color: 'bg-[#1a5c38]',
+            textColor: 'text-[#1a5c38]',
+            bgLight: 'bg-emerald-50',
+            link: canViewDiscipline ? '/admin-dashboard/late-checkin' : '/student/late-checkin',
+            allowed: !!(canViewDiscipline || roles.includes('student')),
             external: false
         },
         {
@@ -31,7 +75,7 @@ const AppHub = () => {
             color: 'bg-green-600',
             textColor: 'text-green-600',
             bgLight: 'bg-green-50',
-            link: isAdmin ? '/admin-dashboard' : (roles.includes('student') ? '/volunteer-gallery' : '/'),
+            link: isAdmin ? '/admin-dashboard' : (roles.includes('teacher') ? '/teacher' : (roles.includes('student') ? '/volunteer-gallery' : '/')),
             allowed: true, // Everyone logged in has basic nexus access
             external: false
         },

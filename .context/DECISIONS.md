@@ -76,14 +76,14 @@
 - **Consequence:** 288 students updated, 128 set to alumni, and 63 new M.1 records pending review.
 
 ### 7.10 Late Check-in Module (May 2026)
-- **Decision:** Implemented a real-time self-reporting system for late arrivals.
+- **Decision:** Implemented a real-time self-reporting system for late student arrivals.
 - **Context:** Requires strict server-side timestamping and behavior score integration.
 - **Rules:** 
-    - **Time Blocks:** 08:00-08:29 (-5 pts, `late_minor`), 08:30-09:29 (-10 pts, `late_major`), 09:30+ (Closed).
-    - **Uniqueness:** Doc ID is `{uid}_{YYYY-MM-DD}` to enforce 1 record/day.
+    - **Time Blocks:** 08:00-08:29 (-5 pts, `late_minor`), 08:30 onwards (-10 pts, `late_major`). The system remains open all day.
+    - **Uniqueness:** Doc ID is `{uid}_{YYYY-MM-DD}` to natively enforce one record per day.
     - **Scores:** Atomic Firestore batch updates both `late_checkins` and `behavior_scores`.
-    - **Security:** Rules enforce `request.time` for timestamps and strict math validation for score updates.
-- **Consequence:** Students gain a transparent way to check in, and admins can monitor live data via the Discipline Dashboard.
+    - **Security:** Firestore Rules enforce `request.time` for all check-ins and strict math validation for score deductions.
+- **Consequence:** Students can now self-report late arrivals via a mobile-friendly interface at any time after 08:00, while admins gain real-time monitoring via the Discipline Dashboard.
 
 ### 7.11 Late Check-in Grace Period & Permissions (May 2026)
 - **Decision:** Implemented a 3-time monthly grace period for 08:00-08:29 late arrivals and a new permission-based access control for discipline management.
@@ -95,6 +95,24 @@
     - **Firestore Rules:** Updated to enforce `hasPermission('discipline.write')` and allow students to record warnings (-0 deduction).
 - **Consequence:** Higher student morale through fair warning system and improved security via granular permissions.
 
+### 7.12 Attendance System - Part 1: Subject Management (May 2026)
+- **Decision:** Implemented the foundations of a per-subject attendance tracking system.
+- **Context:** Requires teachers to define their subjects and assigned rooms before taking attendance.
+- **Rules:** 
+    - **Collection:** `subjects` stores `{code, name, teacherUid, teacherName, rooms[]}`.
+    - **Permissions:** `attendance.write` (automatic for teachers) and `attendance.read` (reports access).
+    - **Identity:** Doc ID is auto-generated. Subject codes are stored in Uppercase.
+- **Consequence:** Teachers can now self-serve their subject setup, and the system is ready for Part 2 (taking attendance).
+
+### 7.13 Attendance System - Part 4: Executive Analytics & Student Personal Tracking (May 2026)
+- **Decision:** Implemented high-level reporting for administrators and personal progress views for students.
+- **Context:** Requires visual insights (charts) and efficient school-wide data aggregation.
+- **Rules:** 
+    - **Visualization:** Integrated `recharts` for responsive Line and Bar charts.
+    - **Cost Optimization:** School-wide queries are restricted to small date ranges (Daily/Weekly) by default to prevent excessive Firestore reads.
+    - **Drill-down:** Admin Dashboard provides Level -> Room -> Student detail navigation.
+- **Consequence:** School leadership has immediate visibility into attendance trends, and students gain transparent access to their own academic presence logs.
+
 ## 8. Incident Log — May 2026
 | Issue | Severity | Root Cause | Resolution |
 | :--- | :--- | :--- | :--- |
@@ -103,6 +121,7 @@
 | **Admin Accounts Deleted**| Critical | Bulk "Clean Slate" import without Staff records. | Recovered 45 staff records via `restore_admins.py`. |
 | **JS Reference Error** | High | Missing `getDoc` import in `userService.js`. | Added missing Firebase Firestore imports. |
 | **"Unknown" Display Names**| Medium | Missing `name` field in imports & Redundant docs. | Explicit name construction & Purged 44 old documents. |
+| **API Key Invalid (Build)**| Critical | Literal quotes in `.env` variables (e.g. `"AIza..."`).| Removed quotes and re-built/re-deployed. |
 
 ## 9. Import Log
 ### 9.1 Teacher Master Import (May 16, 2026)
@@ -115,8 +134,8 @@
     - Skipped: 1 (`yuth@nr.ac.th`)
 - **Note:** Successfully merged `homeroomClass` and standardized `roles` array.
 
-## 10. Current Project Status (As of May 16, 2026)
+## 10. Current Project Status (As of May 21, 2026)
 - **Database:** `users` collection contains **530 verified records**.
-- **Module:** Late Check-in Module with **3-Warning Grace Period** and **Granular Permissions** is live.
-- **Security:** `firestore.rules` updated to support `hasPermission` and grace period logic.
-- **Ready for:** Building out Volunteer management and school-wide reporting.
+- **Attendance:** Full Lifecycle (Subject Setup -> Recording -> Homeroom Insights -> Executive Analytics -> Student Tracking) implemented and deployed.
+- **Library:** `recharts` added as a core dependency for data visualization.
+- **Ready for:** Production pilot and user feedback.

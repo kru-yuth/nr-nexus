@@ -27,7 +27,7 @@ const LoginPage = () => {
                 if (isDisciplineMode) {
                     if (roles.includes('student')) {
                         navigate('/student/late-checkin');
-                    } else if (roles.includes('admin')) {
+                    } else if (roles.includes('admin') || user?.permissions?.includes('discipline.write')) {
                         navigate('/admin-dashboard/late-checkin');
                     } else {
                         navigate('/hub');
@@ -44,7 +44,7 @@ const LoginPage = () => {
                 }
             }
         }
-    }, [user, roles, navigate, location, isDisciplineMode]);
+    }, [user, roles, navigate, location, isDisciplineMode, user?.permissions]);
 
     const handleLogin = async () => {
         try {
@@ -72,14 +72,14 @@ const LoginPage = () => {
                     <h1 className={`text-3xl font-black mb-2 tracking-tight ${isDisciplineMode ? 'text-[#1a5c38]' : 'text-gray-800'}`}>
                         {isDisciplineMode ? 'NR DISCIPLINE' : 'NR Nexus'}
                     </h1>
-                    <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">{isDisciplineMode ? 'ระบบบริหารจัดการพฤติกรรม' : t('login_subtitle')}</p>
+                    <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">{isDisciplineMode ? t('late_checkin_subtitle') : t('login_subtitle')}</p>
                 </div>
 
                 {isDisciplineMode && (
-                    <div className="mb-8 p-6 bg-emerald-50 border border-emerald-100 rounded-3xl flex gap-4 text-left items-start">
+                    <div className="mb-8 p-6 bg-emerald-50 border border-emerald-100 rounded-3xl flex gap-4 text-left items-start text-balance">
                         <Info className="text-[#1a5c38] shrink-0" size={20} />
                         <p className="text-emerald-900 text-xs font-bold leading-relaxed">
-                            กรุณาล็อกอินด้วยอีเมลโรงเรียน <span className="underline italic">@nr.ac.th</span> เท่านั้น
+                            {t('domain_error_alert')}
                         </p>
                     </div>
                 )}
@@ -101,8 +101,7 @@ const LoginPage = () => {
                 
                 {isDisciplineMode && (
                     <p className="mt-8 text-[10px] font-bold text-slate-300 uppercase tracking-widest leading-loose">
-                        หากล็อกอินไม่ได้ หรือไม่พบข้อมูล <br/> 
-                        <span className="text-[#1a5c38]/40 italic">โปรดติดต่อครูผู้ดูแลระบบ (งานเทคโนโลยีสารสนเทศ)</span>
+                        {t('login_help')}
                     </p>
                 )}
             </div>

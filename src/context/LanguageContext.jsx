@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations } from '../i18n/translations';
 
@@ -16,12 +17,21 @@ export const LanguageProvider = ({ children }) => {
         document.documentElement.lang = language;
     }, [language]);
 
-    const t = (key) => {
+    const t = (key, params = {}) => {
         if (!translations[language][key]) {
             console.warn(`Missing translation key: ${key} for language: ${language}`);
             return key;
         }
-        return translations[language][key];
+        
+        let text = translations[language][key];
+
+        // Basic interpolation support: replace {varName} with params.varName
+        Object.keys(params).forEach(paramKey => {
+            const regex = new RegExp(`\\{${paramKey}\\}`, 'g');
+            text = text.replace(regex, params[paramKey]);
+        });
+
+        return text;
     };
 
     const toggleLanguage = () => {

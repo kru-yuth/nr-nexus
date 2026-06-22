@@ -1,0 +1,21 @@
+:root {
+  /* Brand Colors */
+  --color-primary: #1a5c38;
+  --color-primary-light: #e8f5ee;
+  --color-primary-dark: #134429;
+
+  /* Status Colors */
+  --color-present: #10b981;   /* มาเรียน */
+  --color-absent: #f43f5e;    /* ขาด */
+  --color-late: #f59e0b;      /* สาย */
+  --color-leave: #3b82f6;     /* ลา */
+  --color-warning: #f59e0b;
+  --color-danger: #f43f5e;
+
+  /* Neutral */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #94a3b8;
+  --color-border: #e2e8f0;
+  --color-bg-card: #ffffff;
+  --color-bg-page: #f8fafc;
+}

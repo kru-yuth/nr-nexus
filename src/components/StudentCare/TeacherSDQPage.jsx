@@ -6,9 +6,7 @@ import { normalizeUserData } from '../../services/userService';
 import { 
     getStudentSDQAssessments,
     getStudentCareCases,
-    submitSDQAssessment, 
-    calculateSDQResult, 
-    getTrafficLight 
+    submitSDQAssessment
 } from '../../services/careService';
 import { useAuth } from '../../hooks/useAuth';
 import { useLanguage } from '../../context/LanguageContext';
@@ -36,7 +34,6 @@ export default function TeacherSDQPage() {
     const schoolYear = searchParams.get('schoolYear') || "2569";
 
     const [loading, setLoading] = useState(true);
-    const [careCase, setCareCase] = useState(null);
     const [student, setStudent] = useState(null);
     const [existingAssessments, setExistingAssessments] = useState([]);
     
@@ -46,6 +43,7 @@ export default function TeacherSDQPage() {
     const [showForm, setShowForm] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [resultToShow, setResultToShow] = useState(null); // Calculated results to display
+    const [submitted, setSubmitted] = useState(false);
 
     useEffect(() => {
         const loadPageData = async () => {
@@ -60,12 +58,7 @@ export default function TeacherSDQPage() {
                 const normalized = normalizeUserData(studentId, studentSnap.data());
                 setStudent(normalized);
 
-                // 2. Fetch care cases to see if there is an active one for this year
-                const cases = await getStudentCareCases(studentId);
-                const activeCase = cases.find(c => c.schoolYear === schoolYear && c.status === 'active');
-                if (activeCase) {
-                    setCareCase(activeCase);
-                }
+
 
                 // 3. Get existing SDQ assessments for duplicate initial assessment check
                 const assessments = await getStudentSDQAssessments(studentId, schoolYear);
@@ -99,7 +92,7 @@ export default function TeacherSDQPage() {
         }
     }, [studentId, schoolYear]);
 
-    const handleSubmitAssessment = async (responses) => {
+    const handleSubmitAssessment = async (responses, impactAssessment) => {
         setIsSubmitting(true);
         try {
             // Find active case dynamically again before submit to make sure we link it if it exists
@@ -116,24 +109,18 @@ export default function TeacherSDQPage() {
                 schoolYear,
                 informantType: 'teacher',
                 assessmentType,
-                responses
+                responses,
+                impactAssessment
             };
-            const submitRes = await submitSDQAssessment(data, currentUser);
+            await submitSDQAssessment(data, currentUser);
             
-            // Format result payload to match existing assessments
-            const formattedResult = {
-                informantType: 'teacher',
-                assessmentType,
-                result: submitRes.result,
-                createdAt: new Date()
-            };
-
-            setResultToShow(formattedResult);
+            setSubmitted(true);
             setShowForm(false);
             setDuplicateMode(false);
             toast.success("บันทึกประเมินเรียบร้อย!");
         } catch (err) {
             console.error("Error submitting teacher SDQ:", err);
+            toast.error("เกิดข้อผิดพลาดในการส่งข้อมูล: " + err.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -169,25 +156,7 @@ export default function TeacherSDQPage() {
         );
     }
 
-    if (!careCase) {
-        return (
-            <div className="min-h-screen bg-slate-50">
-                <Navbar showBack={true} />
-                <div className="max-w-7xl mx-auto px-4 py-12">
-                    <EmptyState 
-                        icon="❓" 
-                        title="ไม่พบข้อมูลเคสการดูแล" 
-                        description="กรุณาตรวจสอบลิงก์หรือรหัสเคสอีกครั้ง"
-                        action={
-                            <Button onClick={() => navigate('/teacher/homeroom')}>
-                                กลับหน้าสรุปห้องเรียน
-                            </Button>
-                        }
-                    />
-                </div>
-            </div>
-        );
-    }
+
 
     // Colors mapping based on band status
     const getBandColorClass = (band) => {
@@ -196,19 +165,36 @@ export default function TeacherSDQPage() {
         return 'bg-emerald-50 text-emerald-800 border-emerald-200';
     };
 
-    const getDotColorClass = (band) => {
-        if (band === 'abnormal') return 'bg-rose-500';
-        if (band === 'borderline') return 'bg-amber-500';
-        return 'bg-emerald-500';
-    };
-
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
             <Navbar showBack={true} />
 
             <div className="max-w-4xl mx-auto px-4 py-8">
-                {/* 1. Duplicate Check Selection Screen */}
-                {duplicateMode && (
+                {/* 1. Success Screen */}
+                {submitted && (
+                    <Card className="max-w-md mx-auto p-8 border border-emerald-100 shadow-xl text-center">
+                        <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-100">
+                            <CheckCircle size={32} />
+                        </div>
+                        <h2 className="text-xl font-black text-slate-800 mb-2 tracking-tight">
+                            บันทึกแบบประเมินเรียบร้อยแล้ว
+                        </h2>
+                        <p className="text-slate-500 text-sm leading-relaxed mb-6 font-semibold font-bold">
+                            บันทึกข้อมูลแบบประเมินสำหรับ {student?.name || 'นักเรียน'} เรียบร้อยแล้ว
+                        </p>
+                        <Button 
+                            variant="primary" 
+                            onClick={() => navigate('/teacher/homeroom/care')}
+                            className="w-full flex items-center justify-center gap-2"
+                        >
+                            <Home size={18} />
+                            <span>กลับหน้าแดชบอร์ดช่วยเหลือนักเรียน (กรอกข้อมูลคนต่อไป)</span>
+                        </Button>
+                    </Card>
+                )}
+
+                {/* 2. Duplicate Check Selection Screen */}
+                {!submitted && duplicateMode && (
                     <div className="space-y-6">
                         <Card className="text-center p-8 border border-amber-100 bg-amber-50/20">
                             <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -243,8 +229,8 @@ export default function TeacherSDQPage() {
                     </div>
                 )}
 
-                {/* 2. Form Screen */}
-                {!duplicateMode && showForm && (
+                {/* 3. Form Screen */}
+                {!submitted && !duplicateMode && showForm && (
                     <SDQForm
                         informantType="teacher"
                         studentName={student?.name}
@@ -254,8 +240,8 @@ export default function TeacherSDQPage() {
                     />
                 )}
 
-                {/* 3. Diagnostic Scoring Presentation Screen */}
-                {!duplicateMode && !showForm && resultToShow && (
+                {/* 4. Diagnostic Scoring Presentation Screen */}
+                {!submitted && !duplicateMode && !showForm && resultToShow && (
                     <div className="space-y-6">
                         {/* Summary Header */}
                         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
@@ -320,7 +306,6 @@ export default function TeacherSDQPage() {
                             ].map((subscale) => {
                                 const score = resultToShow.result[subscale.key];
                                 const band = resultToShow.result.subscaleBands[subscale.key];
-                                const isProsocial = subscale.key === 'prosocial';
 
                                 return (
                                     <Card key={subscale.key} className="p-6 border border-slate-100 flex flex-col justify-between">
@@ -379,11 +364,11 @@ export default function TeacherSDQPage() {
                         <div className="flex justify-center pt-6">
                             <Button 
                                 variant="primary"
-                                onClick={() => navigate('/teacher/homeroom')}
+                                onClick={() => navigate('/teacher/homeroom/care')}
                                 className="flex items-center gap-2 px-8 py-3"
                             >
                                 <Home size={18} />
-                                <span>กลับหน้าหลักสรุปห้องเรียน</span>
+                                <span>กลับหน้าแดชบอร์ดช่วยเหลือนักเรียน (กรอกข้อมูลคนต่อไป)</span>
                             </Button>
                         </div>
                     </div>

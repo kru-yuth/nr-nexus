@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../../services/firebase';
-import { getDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { getDoc, doc } from 'firebase/firestore';
 import { normalizeUserData } from '../../services/userService';
 import { 
     createCareCase, 
@@ -106,7 +106,7 @@ export default function CareCaseDetailPage() {
         };
 
         loadDetails();
-    }, [caseId]);
+    }, [caseId, isNew, navigate, queryStudentId]);
 
     const handleCreateCase = async (e) => {
         if (e) e.preventDefault();

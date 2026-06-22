@@ -33,13 +33,21 @@ export default function ParentSDQPage() {
 
                 setTokenStatus({ valid: true, reason: null });
 
-                // 2. Load the corresponding student information
-                const studentRef = doc(db, 'users', valResult.studentId);
-                const studentSnap = await getDoc(studentRef);
-                if (studentSnap.exists()) {
-                    const normalized = normalizeUserData(valResult.studentId, studentSnap.data());
-                    setStudentName(normalized.name || 'Unknown');
+                // 2. Load the corresponding student name from token or users collection fallback
+                let name = valResult.studentName || '';
+                if (!name) {
+                    try {
+                        const studentRef = doc(db, 'users', valResult.studentId);
+                        const studentSnap = await getDoc(studentRef);
+                        if (studentSnap.exists()) {
+                            const normalized = normalizeUserData(valResult.studentId, studentSnap.data());
+                            name = normalized.name || '';
+                        }
+                    } catch (readErr) {
+                        console.warn("Could not read student document from users collection (likely due to anonymous parent permissions):", readErr);
+                    }
                 }
+                setStudentName(name || 'นักเรียน');
             } catch (err) {
                 console.error("Error in validateTokenAndLoadData:", err);
                 setTokenStatus({ valid: false, reason: 'tokenInvalid' });
@@ -56,10 +64,10 @@ export default function ParentSDQPage() {
         }
     }, [token]);
 
-    const handleSubmitSDQ = async (responses) => {
+    const handleSubmitSDQ = async (responses, impactAssessment) => {
         setIsSubmitting(true);
         try {
-            const submitRes = await submitParentSDQ(token, responses);
+            const submitRes = await submitParentSDQ(token, responses, impactAssessment);
             if (submitRes.success) {
                 setSubmitted(true);
             } else {
@@ -152,8 +160,20 @@ export default function ParentSDQPage() {
                     <p className="text-slate-500 text-sm leading-relaxed mb-6 font-semibold">
                         {t('sdq.parentPage.thankYou')}
                     </p>
-                    <div className="flex justify-center text-primary/30">
+                    <div className="flex justify-center text-primary/30 mb-6">
                         <Heart size={24} className="animate-pulse fill-current" />
+                    </div>
+                    <div className="flex flex-col gap-3">
+                        <button
+                            type="button"
+                            onClick={() => window.close()}
+                            className="w-full py-3.5 px-4 bg-slate-900 text-white rounded-2xl font-bold text-xs transition-all hover:bg-slate-800 shadow-lg"
+                        >
+                            ออกจากโปรแกรม / ปิดหน้าต่างนี้ (Close Window)
+                        </button>
+                        <p className="text-[10px] text-slate-400 font-bold leading-normal">
+                            *คุณสามารถปิดหน้าต่างหรือแท็บเบราว์เซอร์นี้ได้ทันที
+                        </p>
                     </div>
                 </Card>
             </PageContainer>

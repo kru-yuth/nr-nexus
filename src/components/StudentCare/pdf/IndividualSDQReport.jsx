@@ -215,7 +215,7 @@ export default function IndividualSDQReport({ studentInfo, sdqAssessments, schoo
     const schoolName = schoolInfo?.schoolName || 'โรงเรียนฤทธิณรงค์รอน';
 
     const aggregation = aggregateSDQResults(sdqAssessments);
-    const { byInformant = {}, overallTrafficLight = 'green', requiresAttention = false } = aggregation;
+    const { byInformant = {}, overallTrafficLight = 'green' } = aggregation;
 
     const teacherAss = byInformant.teacher;
     const parentAss = byInformant.parent;

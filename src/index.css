@@ -1,7 +1,8 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 
 @theme {
-  --color-primary: #16a34a;
+  --color-primary: #1a5c38;
 }
 
 @layer base {

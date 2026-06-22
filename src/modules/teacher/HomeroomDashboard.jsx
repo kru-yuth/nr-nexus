@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useLanguage } from '../../context/LanguageContext';
@@ -17,7 +17,8 @@ import {
     Calendar,
     LayoutGrid,
     AlertTriangle,
-    Info
+    Info,
+    ShieldAlert
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -36,7 +37,7 @@ const HomeroomDashboard = () => {
     const [subjectFilter, setSubjectFilter] = useState('all');
 
     // Parse Homeroom Level/Class
-    const getHomeroomInfo = () => {
+    const room = useMemo(() => {
         if (!user?.homeroomClass) return null;
         // Handles "ม.1/1" or "1" (with assumed level from profile)
         if (user.homeroomClass.includes('/')) {
@@ -44,15 +45,10 @@ const HomeroomDashboard = () => {
             return { level: l, class: c };
         }
         return { level: user.level, class: user.homeroomClass };
-    };
+    }, [user]);
 
-    const room = getHomeroomInfo();
-
-    useEffect(() => {
-        if (room) loadData();
-    }, [dateRange]);
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
+        if (!room) return;
         try {
             setLoading(true);
             const { level, class: roomClass } = room;
@@ -74,12 +70,16 @@ const HomeroomDashboard = () => {
             
             setAllRecords(records);
             setStudents(homeroomStudents);
-        } catch (err) {
+        } catch {
             toast.error(t('operation_failed'));
         } finally {
             setLoading(false);
         }
-    };
+    }, [room, dateRange, t]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     if (!room) return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -87,6 +87,12 @@ const HomeroomDashboard = () => {
                 <Info size={48} className="text-slate-200 mx-auto mb-6" />
                 <h3 className="text-xl font-black text-slate-400 uppercase italic">{t('no_homeroom_assigned')}</h3>
             </div>
+        </div>
+    );
+
+    if (loading) return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
         </div>
     );
 
@@ -101,7 +107,8 @@ const HomeroomDashboard = () => {
         present: todayRecords.filter(r => r.status === 'present').length,
         absent: todayRecords.filter(r => r.status === 'absent').length,
         late: todayRecords.filter(r => r.status === 'late').length,
-        leave: todayRecords.filter(r => r.status?.startsWith('leave')).length
+        leave_personal: todayRecords.filter(r => r.status === 'leave_personal').length,
+        leave_sick: todayRecords.filter(r => r.status === 'leave_sick').length
     };
 
     // Calculate Student Summaries
@@ -149,12 +156,13 @@ const HomeroomDashboard = () => {
                         <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em]">{t('current_standing')}</p>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full lg:w-auto">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 w-full lg:w-auto">
                         {[
                             { label: t('present'), val: metrics.present, color: 'emerald', icon: CheckCircle2 },
                             { label: t('absent'), val: metrics.absent, color: 'rose', icon: XCircle },
                             { label: t('late'), val: metrics.late, color: 'amber', icon: Clock },
-                            { label: t('leave_personal'), val: metrics.leave, color: 'indigo', icon: UserMinus }
+                            { label: t('leave_personal'), val: metrics.leave_personal, color: 'indigo', icon: UserMinus },
+                            { label: t('leave_sick'), val: metrics.leave_sick, color: 'blue', icon: ShieldAlert }
                         ].map((m, i) => (
                             <div key={i} className="bg-white p-6 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 min-w-[140px]">
                                 <m.icon className={`text-${m.color}-500 mb-2`} size={18} />

@@ -4,83 +4,83 @@ import { useAuth } from '../../hooks/useAuth';
 import { useLanguage } from '../../context/LanguageContext';
 import { logoutUser } from '../../services/auth';
 import LanguageSwitcher from './LanguageSwitcher';
-import { Home, LogOut, ArrowLeft, Zap, Trash2, LayoutGrid } from 'lucide-react';
+import { Home, LogOut, ArrowLeft, LayoutGrid, User } from 'lucide-react';
 
 const Navbar = ({ showBack = false }) => {
-    const { user, role } = useAuth();
+    const { user, roles } = useAuth();
     const { t } = useLanguage();
     const navigate = useNavigate();
 
     const handleLogout = async () => {
+        if (!window.confirm(t('confirm_action'))) return;
         await logoutUser();
         navigate('/login');
     };
 
     const getDashboardPath = () => {
-        switch (role) {
-            case 'admin':
-            case 'teacher':
-                return '/admin-dashboard';
-            case 'student':
-                return '/volunteer-gallery';
-            case 'parent':
-                return '/parent';
-            default:
-                return '/';
-        }
+        if (roles.includes('admin')) return '/admin-dashboard';
+        if (roles.includes('teacher')) return '/teacher';
+        if (roles.includes('student')) return '/student';
+        return '/hub';
     };
 
     return (
-        <nav className="bg-white shadow-md sticky top-0 z-50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between h-16 items-center">
+        <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-[100] border-b border-slate-100">
+            <div className="max-w-7xl mx-auto px-4 md:px-8">
+                <div className="flex justify-between h-20 items-center">
                     <div className="flex items-center gap-4">
-                        {showBack && (
+                        {showBack ? (
                             <button
                                 onClick={() => navigate(-1)}
-                                className="flex items-center gap-2 text-gray-600 hover:text-green-600 font-medium transition"
+                                className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-2xl transition-all group"
                             >
-                                <ArrowLeft className="w-5 h-5" />
-                                <span className="hidden sm:inline">{t('back_to_home')}</span>
+                                <ArrowLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform" />
                             </button>
+                        ) : (
+                            <Link to="/hub" className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-2xl transition-all">
+                                <LayoutGrid className="w-6 h-6" />
+                            </Link>
                         )}
-                        <Link to={getDashboardPath()} className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white font-bold">
+                        
+                        <Link to={getDashboardPath()} className="flex items-center gap-3 group">
+                            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-emerald-200 group-hover:rotate-6 transition-transform">
                                 N
                             </div>
-                            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-600 to-emerald-600 hidden sm:block">
-                                NR Nexus
-                            </span>
+                            <div className="hidden sm:block">
+                                <span className="text-xl font-black text-slate-800 tracking-tighter uppercase italic">
+                                    NR <span className="text-emerald-600">Nexus</span>
+                                </span>
+                            </div>
                         </Link>
                     </div>
 
-                    <div className="flex items-center gap-2 sm:gap-4">
-                        {/* Hub Link */}
-                        <div className="flex items-center gap-1 border-r pr-4 mr-2 border-gray-200">
-                            <Link 
-                                to="/hub"
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-md transition"
-                                title="App Hub"
-                            >
-                                <LayoutGrid className="w-4 h-4" />
-                                <span className="hidden md:inline">{t('app_hub_title')}</span>
-                            </Link>
+                    <div className="flex items-center gap-2 md:gap-6">
+                        <div className="hidden md:block">
+                            <LanguageSwitcher />
                         </div>
 
-                        <LanguageSwitcher />
-
                         {user && (
-                            <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-                                <div className="hidden md:block text-right">
-                                    <div className="text-sm font-bold text-gray-800 leading-none">{user.displayName}</div>
-                                    <div className="text-xs text-gray-500 capitalize">{role}</div>
+                            <div className="flex items-center gap-4 pl-4 md:pl-6 border-l border-slate-100">
+                                <div className="hidden lg:block text-right">
+                                    <div className="text-sm font-black text-slate-900 leading-none mb-1 uppercase italic">{user.name || user.displayName}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                                        {roles[0]}
+                                    </div>
                                 </div>
+                                
+                                <Link 
+                                    to={roles.includes('student') ? '/student' : getDashboardPath()}
+                                    className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-all border border-transparent hover:border-emerald-100 shadow-inner"
+                                >
+                                    <User size={20} />
+                                </Link>
+
                                 <button
                                     onClick={handleLogout}
-                                    className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition"
+                                    className="p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all group"
                                     title={t('logout')}
                                 >
-                                    <LogOut className="w-5 h-5" />
+                                    <LogOut className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
                                 </button>
                             </div>
                         )}

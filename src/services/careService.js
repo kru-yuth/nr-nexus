@@ -8,7 +8,6 @@ import {
     updateDoc,
     query,
     where,
-    orderBy,
     serverTimestamp,
     writeBatch,
     arrayUnion,
@@ -21,7 +20,7 @@ import { normalizeUserData } from "./userService.js";
 // Helper to remove undefined or null values from an object before Firestore operations
 const removeUndefined = (obj) =>
     Object.fromEntries(
-        Object.entries(obj).filter(([_, v]) => v !== undefined && v !== null)
+        Object.entries(obj).filter(([, v]) => v !== undefined && v !== null)
     );
 
 // ==========================================
@@ -32,47 +31,71 @@ const removeUndefined = (obj) =>
 export const SDQ_CONFIG = {
     totalItems: 25,
     subscales: {
-        emotional:     { items: [2, 7, 12, 16, 23],  reverseItems: [] },
-        conduct:       { items: [4, 11, 13, 21, 24],  reverseItems: [21] },
-        hyperactivity: { items: [1, 9, 15, 19, 22],   reverseItems: [] },
-        peer:          { items: [5, 10, 14, 20, 18],  reverseItems: [10, 14] },
-        prosocial:     { items: [0, 3, 6, 8, 17],     reverseItems: [] },
-    },
-    // impact items (asked separately after the 25 items)
-    impactItems: [25, 26, 27, 28],
-
-    // Band thresholds — separated by informantType
-    bands: {
-        teacher: {
-            totalDifficulty: { borderline: 14, abnormal: 17 },
-            emotional:       { borderline: 5,  abnormal: 7  },
-            conduct:         { borderline: 3,  abnormal: 5  },
-            hyperactivity:   { borderline: 6,  abnormal: 9  },
-            peer:            { borderline: 3,  abnormal: 5  },
-            prosocial:       { borderlineLow: 4, abnormalLow: 2 },
+        emotional: {
+            items: [2, 7, 12, 15, 23],
+            reverseItems: [],
         },
+        conduct: {
+            items: [4, 6, 11, 17, 21],
+            reverseItems: [6],
+        },
+        hyperactivity: {
+            items: [1, 9, 14, 20, 24],
+            reverseItems: [20, 24],
+        },
+        peer: {
+            items: [5, 10, 13, 18, 22],
+            reverseItems: [10, 13],
+        },
+        prosocial: {
+            items: [0, 3, 8, 16, 19],
+            reverseItems: [],
+        },
+    },
+    
+    // Impact configuration structure for Part 2 Form
+    impactConfig: {
+        hasImpactProblemsOptions: ['no', 'minor', 'definite', 'severe'],
+        fourPointScale: ['not_at_all', 'only_a_little', 'quite_a_lot', 'a_great_deal'],
+        durationOptions: ['less_than_1_month', '1_to_5_months', '6_to_12_months', 'more_than_1_year'],
+        socialImpairmentDomains: {
+            teacher: ['peer', 'classroom'],
+            parent: ['home', 'peer', 'classroom', 'leisure'],
+            student: ['home', 'peer', 'classroom', 'leisure'],
+        },
+    },
+
+    // Band thresholds — separated by informantType (DMH ranges)
+    bands: {
         parent: {
-            totalDifficulty: { borderline: 14, abnormal: 17 },
-            emotional:       { borderline: 5,  abnormal: 7  },
-            conduct:         { borderline: 3,  abnormal: 5  },
-            hyperactivity:   { borderline: 6,  abnormal: 9  },
-            peer:            { borderline: 3,  abnormal: 5  },
-            prosocial:       { borderlineLow: 4, abnormalLow: 2 },
+            totalDifficulty: { normal: [0, 13], risk: [14, 16], problem: [17, 40] },
+            emotional:       { normal: [0, 4],  risk: [5, 5],   problem: [6, 10] },
+            conduct:         { normal: [0, 2],  risk: [3, 3],   problem: [4, 10] },
+            hyperactivity:   { normal: [0, 5],  risk: [6, 6],   problem: [7, 10] },
+            peer:            { normal: [0, 2],  risk: [3, 3],   problem: [4, 10] },
+            prosocial:       { normal: [6, 10], risk: [5, 5],   problem: [0, 4] },
+        },
+        teacher: {
+            totalDifficulty: { normal: [0, 11], risk: [12, 15], problem: [16, 40] },
+            emotional:       { normal: [0, 4],  risk: [5, 5],   problem: [6, 10] },
+            conduct:         { normal: [0, 2],  risk: [3, 3],   problem: [4, 10] },
+            hyperactivity:   { normal: [0, 5],  risk: [6, 6],   problem: [7, 10] },
+            peer:            { normal: [0, 3],  risk: [4, 4],   problem: [5, 10] },
+            prosocial:       { normal: [6, 10], risk: [5, 5],   problem: [0, 4] },
         },
         student: {
-            totalDifficulty: { borderline: 15, abnormal: 18 },
-            emotional:       { borderline: 6,  abnormal: 8  },
-            conduct:         { borderline: 3,  abnormal: 5  },
-            hyperactivity:   { borderline: 6,  abnormal: 9  },
-            peer:            { borderline: 3,  abnormal: 5  },
-            prosocial:       { borderlineLow: 4, abnormalLow: 2 },
+            totalDifficulty: { normal: [0, 15], risk: [16, 19], problem: [20, 40] },
+            emotional:       { normal: [0, 5],  risk: [6, 6],   problem: [7, 10] },
+            conduct:         { normal: [0, 3],  risk: [4, 4],   problem: [5, 10] },
+            hyperactivity:   { normal: [0, 5],  risk: [6, 6],   problem: [7, 10] },
+            peer:            { normal: [0, 3],  risk: [4, 5],   problem: [6, 10] },
+            prosocial:       { normal: [6, 10], risk: [5, 5],   problem: [0, 4] },
         },
     },
 
     // requires9Q trigger
     requires9QThreshold: {
         emotional: 5,   // emotional subscale >= threshold -> requires9Q
-        impact: 2,      // impactScore >= threshold -> requires9Q
     },
 };
 
@@ -116,12 +139,46 @@ export function calcSubscaleScore(responses, subscaleKey) {
 }
 
 /**
+ * Calculates Impact Score from impactAssessment object.
+ * @param {Object} impactAssessment - The impact assessment data object
+ * @param {string} informantType - 'teacher' | 'parent' | 'student'
+ * @returns {number} The calculated score
+ */
+export function calculateImpactScore(impactAssessment, informantType) {
+    if (!impactAssessment || impactAssessment.hasImpactProblems === 'no') {
+        return 0;
+    }
+
+    let score = 0;
+    const scoreMap = { 
+        not_at_all: 0, 
+        only_a_little: 0, 
+        quite_a_lot: 1, 
+        a_great_deal: 1 
+    };
+
+    score += scoreMap[impactAssessment.distress] || 0;
+    score += scoreMap[impactAssessment.burdenOnOthers] || 0;
+
+    const domains = informantType === 'teacher'
+        ? ['peer', 'classroom']
+        : ['home', 'peer', 'classroom', 'leisure'];
+
+    domains.forEach(domain => {
+        score += scoreMap[impactAssessment.socialImpairment?.[domain]] || 0;
+    });
+
+    return score;
+}
+
+/**
  * Calculates all subscales, total difficulty score, impact score, bands, and 9Q requirement trigger.
  * @param {number[]} responses - Responses array (0-based)
  * @param {string} informantType - 'teacher' | 'parent' | 'student'
+ * @param {Object} impactAssessment - Impact assessment details
  * @returns {Object} Calculated result metadata
  */
-export function calculateSDQResult(responses, informantType) {
+export function calculateSDQResult(responses, informantType, impactAssessment = null) {
     const emotional = calcSubscaleScore(responses, 'emotional');
     const conduct = calcSubscaleScore(responses, 'conduct');
     const hyperactivity = calcSubscaleScore(responses, 'hyperactivity');
@@ -129,45 +186,40 @@ export function calculateSDQResult(responses, informantType) {
     const prosocial = calcSubscaleScore(responses, 'prosocial');
 
     const totalDifficultyScore = emotional + conduct + hyperactivity + peer;
-    const impactScore = SDQ_CONFIG.impactItems.reduce((sum, idx) => sum + (responses[idx] ?? 0), 0);
+    const impactScore = calculateImpactScore(impactAssessment, informantType);
 
     const thresholds = SDQ_CONFIG.bands[informantType];
     if (!thresholds) {
         throw new Error(`Invalid informantType: ${informantType}`);
     }
 
-    const getSubscaleBand = (score, threshold, key) => {
-        if (key === 'prosocial') {
-            if (score <= threshold.abnormalLow) return 'abnormal';
-            if (score <= threshold.borderlineLow) return 'borderline';
-            return 'normal';
-        } else {
-            if (score >= threshold.abnormal) return 'abnormal';
-            if (score >= threshold.borderline) return 'borderline';
-            return 'normal';
-        }
+    const getSubscaleBand = (score, threshold) => {
+        if (score >= threshold.problem[0] && score <= threshold.problem[1]) return 'abnormal';
+        if (score >= threshold.risk[0] && score <= threshold.risk[1]) return 'borderline';
+        return 'normal';
     };
 
     const subscaleBands = {
-        emotional: getSubscaleBand(emotional, thresholds.emotional, 'emotional'),
-        conduct: getSubscaleBand(conduct, thresholds.conduct, 'conduct'),
-        hyperactivity: getSubscaleBand(hyperactivity, thresholds.hyperactivity, 'hyperactivity'),
-        peer: getSubscaleBand(peer, thresholds.peer, 'peer'),
-        prosocial: getSubscaleBand(prosocial, thresholds.prosocial, 'prosocial'),
+        emotional: getSubscaleBand(emotional, thresholds.emotional),
+        conduct: getSubscaleBand(conduct, thresholds.conduct),
+        hyperactivity: getSubscaleBand(hyperactivity, thresholds.hyperactivity),
+        peer: getSubscaleBand(peer, thresholds.peer),
+        prosocial: getSubscaleBand(prosocial, thresholds.prosocial),
     };
 
     // Calculate overall band
-    let band = 'normal';
     const totalThreshold = thresholds.totalDifficulty;
-    if (totalDifficultyScore >= totalThreshold.abnormal) {
+    let band = 'normal';
+    if (totalDifficultyScore >= totalThreshold.problem[0] && totalDifficultyScore <= totalThreshold.problem[1]) {
         band = 'abnormal';
-    } else if (totalDifficultyScore >= totalThreshold.borderline) {
+    } else if (totalDifficultyScore >= totalThreshold.risk[0] && totalDifficultyScore <= totalThreshold.risk[1]) {
         band = 'borderline';
     }
 
     // requires9Q trigger
     const requires9QEmotional = emotional >= SDQ_CONFIG.requires9QThreshold.emotional;
-    const requires9QImpact = impactScore >= SDQ_CONFIG.requires9QThreshold.impact;
+    const impactThreshold = informantType === 'teacher' ? 1 : 2;
+    const requires9QImpact = impactScore >= impactThreshold;
     const requires9Q = requires9QEmotional || requires9QImpact;
 
     const reasons = [];
@@ -312,11 +364,19 @@ export async function getStudentCareCases(studentId) {
     try {
         const q = query(
             collection(db, "careCases"),
-            where("studentId", "==", studentId),
-            orderBy("createdAt", "desc")
+            where("studentId", "==", studentId)
         );
         const snap = await getDocs(q);
-        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort client-side by createdAt descending to avoid requiring a composite index
+        docs.sort((a, b) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
+            return timeB - timeA;
+        });
+        
+        return docs;
     } catch (error) {
         console.error("Error in getStudentCareCases:", error);
         throw error;
@@ -402,7 +462,7 @@ export async function getClassCareCases(homeroomClass, schoolYear) {
  * @param {Object} currentUser - Current user details
  * @returns {Promise<void>}
  */
-export async function updateCaseStatus(caseId, status, currentUser) {
+export async function updateCaseStatus(caseId, status) {
     try {
         const docRef = doc(db, "careCases", caseId);
         const updates = {
@@ -430,7 +490,7 @@ export async function updateCaseStatus(caseId, status, currentUser) {
  * @param {Object} currentUser - Current user details
  * @returns {Promise<void>}
  */
-export async function shareCaseWith(caseId, userId, currentUser) {
+export async function shareCaseWith(caseId, userId) {
     try {
         const docRef = doc(db, "careCases", caseId);
         await updateDoc(docRef, removeUndefined({
@@ -459,7 +519,7 @@ export async function submitSDQAssessment(data, currentUser) {
             throw new Error("Missing required fields: studentId, schoolYear, informantType, assessmentType, responses");
         }
 
-        const result = calculateSDQResult(data.responses, data.informantType);
+        const result = calculateSDQResult(data.responses, data.informantType, data.impactAssessment);
         const docRef = doc(collection(db, "sdqAssessments"));
 
         const payload = removeUndefined({
@@ -469,6 +529,7 @@ export async function submitSDQAssessment(data, currentUser) {
             informantType: data.informantType,
             assessmentType: data.assessmentType,
             responses: data.responses,
+            impactAssessment: data.impactAssessment || null,
             result,
             completedBy: currentUser.uid || currentUser.id || "unknown",
             completedByRole: currentUser.roles?.[0] || currentUser.role || 'teacher',
@@ -492,11 +553,19 @@ export async function getCaseSDQAssessments(careCaseId) {
     try {
         const q = query(
             collection(db, "sdqAssessments"),
-            where("careCaseId", "==", careCaseId),
-            orderBy("createdAt", "desc")
+            where("careCaseId", "==", careCaseId)
         );
         const snap = await getDocs(q);
-        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort client-side by createdAt descending to avoid index requirement
+        docs.sort((a, b) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
+            return timeB - timeA;
+        });
+        
+        return docs;
     } catch (error) {
         console.error("Error in getCaseSDQAssessments:", error);
         throw error;
@@ -514,11 +583,19 @@ export async function getStudentSDQAssessments(studentId, schoolYear) {
         const q = query(
             collection(db, "sdqAssessments"),
             where("studentId", "==", studentId),
-            where("schoolYear", "==", schoolYear),
-            orderBy("createdAt", "desc")
+            where("schoolYear", "==", schoolYear)
         );
         const snap = await getDocs(q);
-        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort client-side by createdAt descending to avoid index requirement
+        docs.sort((a, b) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
+            return timeB - timeA;
+        });
+        
+        return docs;
     } catch (error) {
         console.error("Error in getStudentSDQAssessments:", error);
         throw error;
@@ -532,7 +609,7 @@ export async function getStudentSDQAssessments(studentId, schoolYear) {
  * @param {Object} currentUser - Current user details
  * @returns {Promise<void>}
  */
-export async function linkSDQToCase(sdqIds, careCaseId, currentUser) {
+export async function linkSDQToCase(sdqIds, careCaseId) {
     try {
         if (!Array.isArray(sdqIds) || sdqIds.length === 0) return;
         const batch = writeBatch(db);
@@ -567,10 +644,23 @@ export async function generateParentSDQToken(studentId, currentUser, careCaseId 
         const tokenRef = doc(db, "sdqTokens", token);
         const expiresAt = Timestamp.fromDate(new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000));
 
+        let studentName = "";
+        try {
+            const studentRef = doc(db, "users", studentId);
+            const studentSnap = await getDoc(studentRef);
+            if (studentSnap.exists()) {
+                const sData = studentSnap.data();
+                studentName = sData.name || sData.displayName || "";
+            }
+        } catch (err) {
+            console.warn("Could not fetch student details for token generation:", err);
+        }
+
         await setDoc(tokenRef, removeUndefined({
             token,
             careCaseId: careCaseId || null,
             studentId,
+            studentName: studentName || null,
             schoolYear,
             generatedBy: currentUser.uid || currentUser.id || "unknown",
             createdAt: serverTimestamp(),
@@ -585,6 +675,48 @@ export async function generateParentSDQToken(studentId, currentUser, careCaseId 
     } catch (error) {
         console.error("Error in generateParentSDQToken:", error);
         throw error;
+    }
+}
+
+/**
+ * Retrieves the active, unused, unexpired parent SDQ token link for a student.
+ * @param {string} studentId - Target student ID
+ * @param {string} schoolYear - Academic year
+ * @returns {Promise<Object|null>} Token URL and metadata or null
+ */
+export async function getActiveParentToken(studentId, schoolYear = "2569") {
+    try {
+        if (!studentId) return null;
+        const q = query(
+            collection(db, "sdqTokens"),
+            where("studentId", "==", studentId),
+            where("schoolYear", "==", schoolYear)
+        );
+        const snap = await getDocs(q);
+        const now = new Date();
+        
+        const active = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .find(tData => {
+                const isUsed = !!tData.usedAt;
+                const expiresDate = tData.expiresAt?.toDate 
+                    ? tData.expiresAt.toDate() 
+                    : new Date(tData.expiresAt);
+                const isExpired = expiresDate < now;
+                return !isUsed && !isExpired;
+            });
+
+        if (active) {
+            return {
+                token: active.token,
+                url: `${window.location.origin}/sdq/parent/${active.token}`,
+                expiresAt: active.expiresAt
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error("Error in getActiveParentToken:", error);
+        return null;
     }
 }
 
@@ -619,6 +751,7 @@ export async function validateSDQToken(token) {
         return {
             valid: true,
             studentId: data.studentId,
+            studentName: data.studentName || null,
             careCaseId: data.careCaseId || null,
             schoolYear: data.schoolYear || "2569"
         };
@@ -634,7 +767,7 @@ export async function validateSDQToken(token) {
  * @param {number[]} responses - SDQ answers array
  * @returns {Promise<Object>} Submission status and result
  */
-export async function submitParentSDQ(token, responses) {
+export async function submitParentSDQ(token, responses, impactAssessment = null) {
     try {
         const tokenRef = doc(db, 'sdqTokens', token);
 
@@ -660,7 +793,7 @@ export async function submitParentSDQ(token, responses) {
             }
 
             // 2. Calculate SDQ result (pure function)
-            const sdqResult = calculateSDQResult(responses, 'parent');
+            const sdqResult = calculateSDQResult(responses, 'parent', impactAssessment);
 
             // 3. Create document reference for assessment
             const sdqRef = doc(collection(db, 'sdqAssessments'));
@@ -674,6 +807,7 @@ export async function submitParentSDQ(token, responses) {
                 assessmentType: tokenData.assessmentType || 'initial',
                 completedBy: 'parent_token',
                 responses,
+                impactAssessment: impactAssessment || null,
                 ...sdqResult,
                 completedAt: serverTimestamp(),
                 createdAt: serverTimestamp(),
@@ -746,7 +880,7 @@ export async function createHomeVisit(data, currentUser) {
  * @param {Object} currentUser - Current user details
  * @returns {Promise<void>}
  */
-export async function linkVisitToCase(visitId, careCaseId, currentUser) {
+export async function linkVisitToCase(visitId, careCaseId) {
     try {
         const docRef = doc(db, "homeVisits", visitId);
         await updateDoc(docRef, removeUndefined({
@@ -797,11 +931,24 @@ export async function getStudentHomeVisits(studentId, schoolYear) {
         const q = query(
             collection(db, "homeVisits"),
             where("studentId", "==", studentId),
-            where("schoolYear", "==", schoolYear),
-            orderBy("visitDate", "desc")
+            where("schoolYear", "==", schoolYear)
         );
         const snap = await getDocs(q);
-        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort client-side by visitDate descending
+        docs.sort((a, b) => {
+            const getVal = (x) => {
+                if (!x) return 0;
+                if (x.toMillis) return x.toMillis();
+                if (x.seconds) return x.seconds * 1000;
+                const parsed = Date.parse(x);
+                return isNaN(parsed) ? 0 : parsed;
+            };
+            return getVal(b.visitDate) - getVal(a.visitDate);
+        });
+        
+        return docs;
     } catch (error) {
         console.error("Error in getStudentHomeVisits:", error);
         throw error;
@@ -857,20 +1004,31 @@ export async function getClassSDQSummary(homeroomClass, schoolYear) {
             caseMap[c.studentId] = c;
         });
 
-        // 3. Fetch SDQ assessments for all students in parallel (chunked by 30)
+        // 3. Fetch SDQ assessments and tokens for all students in parallel (chunked by 30)
         const studentIds = students.map(s => s.id);
         const CHUNK_SIZE = 30;
         const sdqPromises = [];
+        const tokenPromises = [];
         for (let i = 0; i < studentIds.length; i += CHUNK_SIZE) {
             const chunk = studentIds.slice(i, i + CHUNK_SIZE);
-            const q = query(
+            const qSdq = query(
                 collection(db, "sdqAssessments"),
                 where("studentId", "in", chunk),
                 where("schoolYear", "==", schoolYear)
             );
-            sdqPromises.push(getDocs(q));
+            sdqPromises.push(getDocs(qSdq));
+
+            const qToken = query(
+                collection(db, "sdqTokens"),
+                where("studentId", "in", chunk),
+                where("schoolYear", "==", schoolYear)
+            );
+            tokenPromises.push(getDocs(qToken));
         }
-        const sdqSnapshots = await Promise.all(sdqPromises);
+        const [sdqSnapshots, tokenSnapshots] = await Promise.all([
+            Promise.all(sdqPromises),
+            Promise.all(tokenPromises)
+        ]);
         
         const studentAssessmentsMap = {};
         sdqSnapshots.forEach(snap => {
@@ -881,6 +1039,23 @@ export async function getClassSDQSummary(homeroomClass, schoolYear) {
                     studentAssessmentsMap[sId] = [];
                 }
                 studentAssessmentsMap[sId].push(data);
+            });
+        });
+
+        const tokenMap = {};
+        const now = new Date();
+        tokenSnapshots.forEach(snap => {
+            snap.forEach(docSnap => {
+                const tData = docSnap.data();
+                const sId = tData.studentId;
+                const isUsed = !!tData.usedAt;
+                const expiresDate = tData.expiresAt?.toDate 
+                    ? tData.expiresAt.toDate() 
+                    : new Date(tData.expiresAt);
+                const isExpired = expiresDate < now;
+                if (!isUsed && !isExpired) {
+                    tokenMap[sId] = `${window.location.origin}/sdq/parent/${tData.token}`;
+                }
             });
         });
 
@@ -942,7 +1117,8 @@ export async function getClassSDQSummary(homeroomClass, schoolYear) {
                 trafficLight,
                 requires9Q,
                 caseId: sCase ? sCase.id : null,
-                riskSubscales
+                riskSubscales,
+                parentLink: tokenMap[s.id] || null
             };
         });
 
