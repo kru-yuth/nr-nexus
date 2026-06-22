@@ -3,7 +3,7 @@
 - [ ] Migrate components ให้ใช้ Design System
 
 ## เสร็จแล้ว
-- [x] Fixed anonymous parent SDQ page loads in incognito mode by correcting the Firestore security rules check on the missing `usedAt` field (using a default getter fallback to prevent rules evaluator crashes) and verified token retrieval.
+- [x] Rolled back Firestore security rules (`firestore.rules`) to original stable state (commit `6b9744a732a51dfa8acbadc0bc2fcc24531f4762`) to fix the user/teacher login issue, and successfully deployed them to production Firestore.
 - [x] Implemented teacher-generated parent SDQ token links, displaying them appended to student names in the teacher dashboard, and integrated parent links into the student's SDQ page views.
 - [x] Added SDQ Assessment card/widget to the Student Dashboard and fixed Firestore query index requirements for student SDQ assessments and home visits using client-side sorting.
 - [x] Fixed Firestore index errors in SDQ/CareCase queries by using client-side sorting, bypassing index requirements and preventing submission failures.
