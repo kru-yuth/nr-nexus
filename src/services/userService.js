@@ -52,6 +52,26 @@ export const normalizeRoles = (data) => {
 };
 
 /**
+ * Derives the primary role from a user object using fallback priorities.
+ * Priority order: roles array > role field > Role field > default 'student'
+ * @param {Object} userData 
+ * @returns {string}
+ */
+export const derivePrimaryRole = (userData) => {
+    if (!userData) return 'student';
+    if (Array.isArray(userData.roles) && userData.roles.length > 0) {
+        const priorityOrder = ['admin', 'teacher', 'student'];
+        const found = priorityOrder.find(r => userData.roles.includes(r));
+        if (found) return found;
+        return userData.roles[0];
+    }
+    if (userData.role) return String(userData.role).toLowerCase().trim();
+    if (userData.Role) return String(userData.Role).toLowerCase().trim();
+    return 'student';
+};
+
+
+/**
  * Normalizes raw Firestore data into a consistent user schema.
  * Handles legacy field names (UpperCase) and provides sensible defaults.
  */
@@ -105,49 +125,74 @@ export const normalizeUserData = (docId, rawData) => {
 export const fetchUserByEmailAndLinkUID = async (email, uid) => {
     try {
         if (!email || !uid) return null;
-        
+
         const normalizedEmail = email.toLowerCase().trim();
 
-        // 1. First, check if a document with the UID already exists
-        const directDoc = await getDoc(doc(db, "users", uid));
-        if (directDoc.exists()) {
-            console.log(`Email-based lookup: Found existing UID document for ${normalizedEmail}`);
-            return normalizeUserData(directDoc.id, directDoc.data());
-        }
-
-        // 2. If not, search for whitelisted documents (by email or Email field)
-        const q = query(collection(db, "users"), where("email", "==", normalizedEmail), limit(1));
+        // 1. Search for whitelisted documents first (get all matching documents to filter out the UID one)
+        const q = query(collection(db, "users"), where("email", "==", normalizedEmail));
         let querySnapshot = await getDocs(q);
 
-        // Fallback for legacy 'Email' field if 'email' search fails
         if (querySnapshot.empty) {
-            const qLegacy = query(collection(db, "users"), where("Email", "==", normalizedEmail), limit(1));
+            const qLegacy = query(collection(db, "users"), where("Email", "==", normalizedEmail));
             querySnapshot = await getDocs(qLegacy);
         }
 
-        if (querySnapshot.empty) {
+        // 2. Check if the direct UID document already exists
+        const directDocRef = doc(db, "users", uid);
+        const directDoc = await getDoc(directDocRef);
+
+        // Filter out the active UID document to find the actual whitelist document
+        const whitelistDocs = querySnapshot.docs.filter(d => d.id !== uid);
+
+        if (whitelistDocs.length === 0) {
+            // No separate whitelist document found - use existing UID document if it exists
+            if (directDoc.exists()) {
+                console.log(`No whitelist found, using existing UID document for ${normalizedEmail}`);
+                return normalizeUserData(directDoc.id, directDoc.data());
+            }
             console.warn(`Email-based lookup: No whitelisted user found for email: ${normalizedEmail}`);
             return null;
         }
 
-        const userDoc = querySnapshot.docs[0];
-        const userData = userDoc.data();
+        const whitelistDoc = whitelistDocs[0];
+        const whitelistData = whitelistDoc.data();
         
-        // Normalize whitelisted data before saving
-        const normalized = normalizeUserData(userDoc.id, userData);
+        // Normalize both sources to prepare for merge
+        const normalizedWhitelist = normalizeUserData(whitelistDoc.id, whitelistData);
+        const normalizedUid = directDoc.exists() ? normalizeUserData(directDoc.id, directDoc.data()) : {};
 
-        const userRef = doc(db, "users", uid);
-        const updates = {
-            ...normalized,
-            uid: uid,
-            updatedAt: new Date().toISOString()
+        // 3. Perform a safe merge - Administrative whitelist fields take precedence,
+        // but we preserve existing name fields if the whitelist fields are empty/missing or default to "Unknown"
+        const merged = {
+            ...normalizedUid,
+            ...normalizedWhitelist,
         };
-        
-        // Link to UID document
-        await setDoc(userRef, updates, { merge: true });
-        console.log(`Email-based lookup: Linked UID ${uid} and normalized roles for ${email}`);
 
-        return updates;
+        const nameFields = ['firstName', 'lastName', 'name', 'displayName'];
+        nameFields.forEach(field => {
+            const wVal = normalizedWhitelist[field]?.trim();
+            const uVal = normalizedUid[field]?.trim();
+            if ((!wVal || wVal === 'Unknown') && uVal && uVal !== 'Unknown') {
+                merged[field] = normalizedUid[field];
+            }
+        });
+
+        // Derive primary role fields for legacy compatibility
+        const primary = derivePrimaryRole(merged);
+        merged.role = primary;
+        merged.Role = primary;
+
+        // Ensure system variables are properly constrained
+        merged.uid = uid;
+        merged.id = normalizedWhitelist.id || normalizedUid.id || whitelistDoc.id;
+        merged.createdAt = normalizedUid.createdAt || normalizedWhitelist.createdAt || new Date().toISOString();
+        merged.updatedAt = new Date().toISOString();
+
+        // Write the merged document back to Firestore
+        await setDoc(directDocRef, merged, { merge: true });
+        console.log(`Synced whitelist data into UID document ${uid} for ${normalizedEmail}`);
+
+        return merged;
 
     } catch (error) {
         console.error("Error in fetchUserByEmailAndLinkUID:", error);
@@ -221,7 +266,9 @@ export const fetchAllUsers = async () => {
  */
 export const addNewUser = async (userData) => {
     try {
-        const roles = Array.isArray(userData.roles) ? userData.roles : [userData.role || 'student'];
+        const roles = Array.isArray(userData.roles) && userData.roles.length > 0
+            ? userData.roles
+            : [derivePrimaryRole(userData)];
         const cleanRoles = [...new Set(roles.map(r => r ? String(r).toLowerCase().trim() : '').filter(r => r !== ''))];
         
         const primaryRole = cleanRoles.length > 0 ? cleanRoles[0] : 'student';
@@ -240,6 +287,7 @@ export const addNewUser = async (userData) => {
             gender: userData.gender || '',
             prefix: userData.prefix || '',
             studentId: userData.studentId || '',
+            homeroomClass: userData.homeroomClass || '',
             uid: userData.uid || "",
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -272,10 +320,10 @@ export const updateUser = async (userId, userData) => {
 
         // Merge roles if provided, otherwise keep existing
         let cleanRoles = existing.roles || [];
-        let primaryRole = existing.role || 'student';
+        let primaryRole = derivePrimaryRole(existing);
 
         if (userData.roles || userData.role || userData.Role) {
-            const rolesInput = Array.isArray(userData.roles) ? userData.roles : [userData.role || userData.Role];
+            const rolesInput = Array.isArray(userData.roles) ? userData.roles : [derivePrimaryRole(userData)];
             cleanRoles = [...new Set(rolesInput.map(r => r ? String(r).toLowerCase().trim() : '').filter(r => r !== ''))];
             if (cleanRoles.length > 0) primaryRole = cleanRoles[0];
         }
@@ -295,10 +343,39 @@ export const updateUser = async (userId, userData) => {
             prefix: userData.prefix,
             studentId: userData.studentId,
             citizenId: userData.citizenId,
+            homeroomClass: userData.homeroomClass === null ? "" : userData.homeroomClass,
             updatedAt: serverTimestamp()
         });
 
-        await updateDoc(userRef, updateData);
+        const email = (existing.email || existing.Email || userData.email || '').toLowerCase().trim();
+        const batch = writeBatch(db);
+
+        // Write updates to the main document being edited
+        batch.set(userRef, updateData, { merge: true });
+
+        // Find the paired document (whitelist or UID) and write to sync it
+        if (email) {
+            const q = query(collection(db, "users"), where("email", "==", email));
+            const querySnapshot = await getDocs(q);
+            const pairedDocs = querySnapshot.docs.filter(d => d.id !== userId);
+
+            // Fallback for Email (legacy field) if no new email matched
+            if (pairedDocs.length === 0) {
+                const qLegacy = query(collection(db, "users"), where("Email", "==", email));
+                const legacySnap = await getDocs(qLegacy);
+                legacySnap.docs.filter(d => d.id !== userId).forEach(d => pairedDocs.push(d));
+            }
+
+            pairedDocs.forEach(pairedDoc => {
+                const pairedRef = doc(db, "users", pairedDoc.id);
+                // Exclude fields that are specific to the document (like uid, id, createdAt)
+                const { uid: _ignoreUid, id: _ignoreId, createdAt: _ignoreCreatedAt, ...syncableUpdates } = updateData;
+                batch.set(pairedRef, syncableUpdates, { merge: true });
+            });
+        }
+
+        await batch.commit();
+        return updateData;
     } catch (error) {
         console.error("Error updating user:", error);
         throw error;
@@ -370,7 +447,7 @@ export const bulkAddUsers = async (usersArray) => {
             const targetId = user.email.toLowerCase().trim().replace(/[@.]/g, '_');
             const userRef = doc(db, "users", targetId);
 
-            const roles = Array.isArray(user.roles) ? user.roles : [user.role || 'student'];
+            const roles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [derivePrimaryRole(user)];
             const cleanRoles = [...new Set(roles.map(r => String(r || '').toLowerCase().trim()).filter(r => r !== ''))];
 
             const data = {
