@@ -8,7 +8,7 @@ import { Card, Button, LoadingSpinner } from '../ui';
 import { Link, Copy, Check, Calendar, HelpCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-export default function SDQTokenGenerator({ caseId, studentId, schoolYear }) {
+export default function SDQTokenGenerator({ caseId, studentId, schoolYear, classId = null }) {
     const { user: currentUser } = useAuth();
     const { t, formatDate } = useLanguage();
 
@@ -21,11 +21,14 @@ export default function SDQTokenGenerator({ caseId, studentId, schoolYear }) {
             try {
                 if (!studentId) return;
 
-                const q = query(
-                    collection(db, 'sdqTokens'),
+                const constraints = [
                     where('studentId', '==', studentId),
                     where('schoolYear', '==', schoolYear || '2569')
-                );
+                ];
+                if (classId) {
+                    constraints.push(where('classId', '==', classId));
+                }
+                const q = query(collection(db, 'sdqTokens'), ...constraints);
 
                 const snap = await getDocs(q);
                 const now = new Date();

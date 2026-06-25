@@ -253,7 +253,8 @@ service cloud.firestore {
                   && resource.data.usedAt == null;
       allow list: if request.auth != null && (
         hasRole('admin') ||
-        (getUserData() != null && getUserData().get('homeroomClass', '') != '' && resource.data.classId == getUserData().get('homeroomClass', ''))
+        (getUserData() != null && getUserData().get('homeroomClass', '') != '' && resource.data.classId == getUserData().get('homeroomClass', '')) ||
+        resource.data.studentId == request.auth.uid
       );
       allow create: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
       allow update: if (request.auth != null && (hasRole('admin') || hasRole('teacher'))) ||

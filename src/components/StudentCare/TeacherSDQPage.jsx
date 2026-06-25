@@ -58,10 +58,12 @@ export default function TeacherSDQPage() {
                 const normalized = normalizeUserData(studentId, studentSnap.data());
                 setStudent(normalized);
 
-
+                const classId = (normalized && normalized.level && normalized.class) 
+                    ? `${normalized.level}/${normalized.class}` 
+                    : null;
 
                 // 3. Get existing SDQ assessments for duplicate initial assessment check
-                const assessments = await getStudentSDQAssessments(studentId, schoolYear);
+                const assessments = await getStudentSDQAssessments(studentId, schoolYear, classId);
                 setExistingAssessments(assessments);
 
                 // Check if teacher has completed an 'initial' assessment

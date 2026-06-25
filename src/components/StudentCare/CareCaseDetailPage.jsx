@@ -82,10 +82,15 @@ export default function CareCaseDetailPage() {
                     setCareCase(caseData);
 
                     // Fetch student
+                    let studentClassId = null;
                     const studentRef = doc(db, 'users', caseData.studentId);
                     const studentSnap = await getDoc(studentRef);
                     if (studentSnap.exists()) {
-                        setStudent(normalizeUserData(caseData.studentId, studentSnap.data()));
+                        const sData = normalizeUserData(caseData.studentId, studentSnap.data());
+                        setStudent(sData);
+                        if (sData && sData.level && sData.class) {
+                            studentClassId = `${sData.level}/${sData.class}`;
+                        }
                     }
 
                     // Fetch assessments linked to this case
@@ -93,7 +98,7 @@ export default function CareCaseDetailPage() {
                     setAssessments(assData);
 
                     // Fetch all student assessments to find unlinked ones
-                    const allAssData = await getStudentSDQAssessments(caseData.studentId, caseData.schoolYear);
+                    const allAssData = await getStudentSDQAssessments(caseData.studentId, caseData.schoolYear, studentClassId);
                     const unlinked = allAssData.filter(a => !a.careCaseId);
                     setUnlinkedAssessments(unlinked);
                 }
@@ -258,7 +263,8 @@ export default function CareCaseDetailPage() {
             const assData = await getCaseSDQAssessments(caseId);
             setAssessments(assData);
 
-            const allAssData = await getStudentSDQAssessments(student.studentId, careCase.schoolYear);
+            const studentClassId = (student && student.level && student.class) ? `${student.level}/${student.class}` : null;
+            const allAssData = await getStudentSDQAssessments(student.studentId, careCase.schoolYear, studentClassId);
             const unlinked = allAssData.filter(a => !a.careCaseId);
             setUnlinkedAssessments(unlinked);
         } catch (err) {
@@ -320,6 +326,7 @@ export default function CareCaseDetailPage() {
                     caseId={caseId} 
                     studentId={careCase.studentId} 
                     schoolYear={careCase.schoolYear}
+                    classId={(student && student.level && student.class) ? `${student.level}/${student.class}` : null}
                 />
 
                 {/* 3. Diagnostic / Actions Section */}

@@ -591,13 +591,16 @@ export async function getCaseSDQAssessments(careCaseId) {
  * @param {string} schoolYear - Academic school year
  * @returns {Promise<Array>} List of SDQ assessments
  */
-export async function getStudentSDQAssessments(studentId, schoolYear) {
+export async function getStudentSDQAssessments(studentId, schoolYear, classId = null) {
     try {
-        const q = query(
-            collection(db, "sdqAssessments"),
+        const constraints = [
             where("studentId", "==", studentId),
             where("schoolYear", "==", schoolYear)
-        );
+        ];
+        if (classId) {
+            constraints.push(where("classId", "==", classId));
+        }
+        const q = query(collection(db, "sdqAssessments"), ...constraints);
         const snap = await getDocs(q);
         const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
