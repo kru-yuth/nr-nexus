@@ -251,6 +251,10 @@ service cloud.firestore {
       allow get: if exists(/databases/$(database)/documents/sdqTokens/$(token))
                   && resource.data.expiresAt > request.time
                   && resource.data.usedAt == null;
+      allow list: if request.auth != null && (
+        hasRole('admin') ||
+        (getUserData() != null && getUserData().get('homeroomClass', '') != '' && resource.data.classId == getUserData().get('homeroomClass', ''))
+      );
       allow create: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
       allow update: if (request.auth != null && (hasRole('admin') || hasRole('teacher'))) ||
                     (exists(/databases/$(database)/documents/sdqTokens/$(token)) &&
@@ -271,7 +275,7 @@ service cloud.firestore {
     match /sdqAssessments/{sdqId} {
       allow read: if request.auth != null && (
         request.auth.uid == resource.data.studentId ||
-        isHomeroomTeacherOf(get(/databases/$(database)/documents/users/$(resource.data.studentId)).data) ||
+        (getUserData() != null && getUserData().get('homeroomClass', '') != '' && resource.data.classId == getUserData().get('homeroomClass', '')) ||
         (resource.data.careCaseId != null &&
          canAccessCase(get(/databases/$(database)/documents/careCases/$(resource.data.careCaseId)).data)) ||
         hasRole('admin')
@@ -281,11 +285,13 @@ service cloud.firestore {
         (request.resource.data.informantType == 'student' &&
          request.auth.uid == request.resource.data.studentId) ||
         (request.resource.data.informantType == 'teacher' &&
-         isHomeroomTeacherOf(get(/databases/$(database)/documents/users/$(request.resource.data.studentId)).data))
+         getUserData() != null &&
+         getUserData().get('homeroomClass', '') != '' &&
+         request.resource.data.classId == getUserData().get('homeroomClass', ''))
       ) && request.resource.data.completedBy == request.auth.uid) || (request.resource.data.completedBy == 'parent_token');
 
       allow update: if request.auth != null && (
-        isHomeroomTeacherOf(get(/databases/$(database)/documents/users/$(resource.data.studentId)).data) ||
+        (getUserData() != null && getUserData().get('homeroomClass', '') != '' && resource.data.classId == getUserData().get('homeroomClass', '')) ||
         hasRole('admin')
       ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['careCaseId', 'updatedAt']);
 

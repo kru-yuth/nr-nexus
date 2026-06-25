@@ -519,11 +519,24 @@ export async function submitSDQAssessment(data, currentUser) {
             throw new Error("Missing required fields: studentId, schoolYear, informantType, assessmentType, responses");
         }
 
+        let classId = "";
+        try {
+            const studentRef = doc(db, "users", data.studentId);
+            const studentSnap = await getDoc(studentRef);
+            if (studentSnap.exists()) {
+                const sData = normalizeUserData(studentSnap.id, studentSnap.data());
+                classId = (sData.level && sData.class) ? `${sData.level}/${sData.class}` : '';
+            }
+        } catch (err) {
+            console.warn("Could not fetch student details for classId computation:", err);
+        }
+
         const result = calculateSDQResult(data.responses, data.informantType, data.impactAssessment);
         const docRef = doc(collection(db, "sdqAssessments"));
 
         const payload = removeUndefined({
             studentId: data.studentId,
+            classId: classId || null,
             careCaseId: data.careCaseId || null,
             schoolYear: data.schoolYear,
             informantType: data.informantType,
@@ -645,12 +658,14 @@ export async function generateParentSDQToken(studentId, currentUser, careCaseId 
         const expiresAt = Timestamp.fromDate(new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000));
 
         let studentName = "";
+        let classId = "";
         try {
             const studentRef = doc(db, "users", studentId);
             const studentSnap = await getDoc(studentRef);
             if (studentSnap.exists()) {
-                const sData = studentSnap.data();
+                const sData = normalizeUserData(studentSnap.id, studentSnap.data());
                 studentName = sData.name || sData.displayName || "";
+                classId = (sData.level && sData.class) ? `${sData.level}/${sData.class}` : '';
             }
         } catch (err) {
             console.warn("Could not fetch student details for token generation:", err);
@@ -661,6 +676,7 @@ export async function generateParentSDQToken(studentId, currentUser, careCaseId 
             careCaseId: careCaseId || null,
             studentId,
             studentName: studentName || null,
+            classId: classId || null,
             schoolYear,
             generatedBy: currentUser.uid || currentUser.id || "unknown",
             createdAt: serverTimestamp(),
@@ -801,6 +817,7 @@ export async function submitParentSDQ(token, responses, impactAssessment = null)
             // 4. Write assessment within the transaction
             transaction.set(sdqRef, removeUndefined({
                 studentId: tokenData.studentId,
+                classId: tokenData.classId || null,
                 careCaseId: tokenData.careCaseId || null,
                 schoolYear: tokenData.schoolYear || "2569",
                 informantType: 'parent',
@@ -1004,59 +1021,46 @@ export async function getClassSDQSummary(homeroomClass, schoolYear) {
             caseMap[c.studentId] = c;
         });
 
-        // 3. Fetch SDQ assessments and tokens for all students in parallel (chunked by 30)
-        const studentIds = students.map(s => s.id);
-        const CHUNK_SIZE = 30;
-        const sdqPromises = [];
-        const tokenPromises = [];
-        for (let i = 0; i < studentIds.length; i += CHUNK_SIZE) {
-            const chunk = studentIds.slice(i, i + CHUNK_SIZE);
-            const qSdq = query(
-                collection(db, "sdqAssessments"),
-                where("studentId", "in", chunk),
-                where("schoolYear", "==", schoolYear)
-            );
-            sdqPromises.push(getDocs(qSdq));
+        // 3. Fetch SDQ assessments and tokens for the classroom in parallel using the classId index
+        const sdqQuery = query(
+            collection(db, "sdqAssessments"),
+            where("classId", "==", homeroomClass),
+            where("schoolYear", "==", schoolYear)
+        );
+        const tokenQuery = query(
+            collection(db, "sdqTokens"),
+            where("classId", "==", homeroomClass),
+            where("schoolYear", "==", schoolYear)
+        );
 
-            const qToken = query(
-                collection(db, "sdqTokens"),
-                where("studentId", "in", chunk),
-                where("schoolYear", "==", schoolYear)
-            );
-            tokenPromises.push(getDocs(qToken));
-        }
-        const [sdqSnapshots, tokenSnapshots] = await Promise.all([
-            Promise.all(sdqPromises),
-            Promise.all(tokenPromises)
+        const [sdqSnap, tokenSnap] = await Promise.all([
+            getDocs(sdqQuery),
+            getDocs(tokenQuery)
         ]);
         
         const studentAssessmentsMap = {};
-        sdqSnapshots.forEach(snap => {
-            snap.forEach(docSnap => {
-                const data = { id: docSnap.id, ...docSnap.data() };
-                const sId = data.studentId;
-                if (!studentAssessmentsMap[sId]) {
-                    studentAssessmentsMap[sId] = [];
-                }
-                studentAssessmentsMap[sId].push(data);
-            });
+        sdqSnap.forEach(docSnap => {
+            const data = { id: docSnap.id, ...docSnap.data() };
+            const sId = data.studentId;
+            if (!studentAssessmentsMap[sId]) {
+                studentAssessmentsMap[sId] = [];
+            }
+            studentAssessmentsMap[sId].push(data);
         });
 
         const tokenMap = {};
         const now = new Date();
-        tokenSnapshots.forEach(snap => {
-            snap.forEach(docSnap => {
-                const tData = docSnap.data();
-                const sId = tData.studentId;
-                const isUsed = !!tData.usedAt;
-                const expiresDate = tData.expiresAt?.toDate 
-                    ? tData.expiresAt.toDate() 
-                    : new Date(tData.expiresAt);
-                const isExpired = expiresDate < now;
-                if (!isUsed && !isExpired) {
-                    tokenMap[sId] = `${window.location.origin}/sdq/parent/${tData.token}`;
-                }
-            });
+        tokenSnap.forEach(docSnap => {
+            const tData = docSnap.data();
+            const sId = tData.studentId;
+            const isUsed = !!tData.usedAt;
+            const expiresDate = tData.expiresAt?.toDate 
+                ? tData.expiresAt.toDate() 
+                : new Date(tData.expiresAt);
+            const isExpired = expiresDate < now;
+            if (!isUsed && !isExpired) {
+                tokenMap[sId] = `${window.location.origin}/sdq/parent/${tData.token}`;
+            }
         });
 
         // 4. Calculate summaries
