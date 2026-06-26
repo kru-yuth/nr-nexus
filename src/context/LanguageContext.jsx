@@ -48,9 +48,17 @@ export const LanguageProvider = ({ children }) => {
     const formatDate = (dateString, options = {}) => {
         if (!dateString) return '';
 
+        // Handle Firestore Timestamp objects or objects with { seconds, nanoseconds }
+        let dateVal = dateString;
+        if (dateString && typeof dateString.toDate === 'function') {
+            dateVal = dateString.toDate();
+        } else if (dateString && typeof dateString.seconds === 'number') {
+            dateVal = new Date(dateString.seconds * 1000);
+        }
+
         // Ensure we have a Date object
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return dateString; // Return original if invalid
+        const date = new Date(dateVal);
+        if (isNaN(date.getTime())) return String(dateString); // Return string representation to avoid React error #31
 
         const defaultOptions = {
             year: 'numeric',

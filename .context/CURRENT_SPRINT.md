@@ -1,8 +1,16 @@
 # Current Sprint — 4 มิ.ย. 2569
 ## กำลังทำ
+- [ ] Fix Timestamp rendering bug (React error #31) ในหน้าดูรายละเอียดรายคน + PDF report
 - [ ] Migrate components ให้ใช้ Design System
 
 ## เสร็จแล้ว
+- [x] แก้ไข Firebase error: Missing or insufficient permissions ในหน้า TeacherCareDashboard, TeacherSDQPage, CareCaseDetailPage และ SDQTokenGenerator สำหรับบทบาทคุณครู (และอัปเดตสิทธิ์ sdqTokens ใน rules) - ทดสอบจริงผ่านด้วยนักเรียนจริง 2 คนเรียบร้อยแล้ว
+- [x] แก้ไข Firebase error: Missing or insufficient permissions ในหน้า TeacherCareDashboard โดยการย้ายมาใช้ classId Index และปรับปรุง firestore.rules พร้อมทำ backfill ข้อมูลเก่าทั้งหมด
+- [x] Backfill ข้อมูลครู 10 คน: ปิด task — ข้อมูลถูกต้องครบทั้ง 10 คนแล้ว (ยืนยันจาก dry-run ล่าสุดที่ currentValues = correctedFields ทุกคน) ไม่ต้องรัน --execute (หมายเหตุ: whitelistDocId แบบ random ID ของ peerapat, surapitchaya2569, phatcharaphon2569, aksarapak2569 คือ known legacy pattern ที่มีอยู่แล้ว ไม่ใช่ปัญหาใหม่ ไม่ต้องแก้ไข)
+- [x] Bug #3: แก้ไขบัค homeroomClass ไม่บันทึกในหน้า Add User และ Edit User โดยการอัปเดต addNewUser และ updateUser (แก้ไขและ deploy ขึ้น Hosting เรียบร้อย)
+- [x] ปรับปรุง `updateUser()` ให้เขียนบันทึกคู่ขนานไปยังทั้ง Whitelist และ UID Doc แบบ atomic (และเพิ่มฟิลด์ homeroomClass ใน update payload)
+- [x] ตรวจสอบความเสี่ยงของสิทธิ์หาย (permissions) จาก Whitelist-Wins Merge (Step 1-3) และเสนอแนวทางแก้ไข
+- [x] แก้ไข logic การซิงค์และตรวจสอบข้อมูลผู้ใช้ใน fetchUserByEmailAndLinkUID และ updateUser เพื่อแก้ปัญหาข้อมูลครู/ห้องประจำชั้นไม่ตรงกันและสิทธิ์เพี้ยน
 - [x] Rolled back Firestore security rules (`firestore.rules`) to original stable state (commit `6b9744a732a51dfa8acbadc0bc2fcc24531f4762`) to fix the user/teacher login issue, and successfully deployed them to production Firestore.
 - [x] Implemented teacher-generated parent SDQ token links, displaying them appended to student names in the teacher dashboard, and integrated parent links into the student's SDQ page views.
 - [x] Added SDQ Assessment card/widget to the Student Dashboard and fixed Firestore query index requirements for student SDQ assessments and home visits using client-side sorting.
