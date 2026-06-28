@@ -85,8 +85,12 @@ export const normalizeUserData = (docId, rawData) => {
     const lastName = (rawData.lastName || rawData.LastName || "").toString().trim();
     
     // Construct name if missing, handle all variants
-    const name = rawData.name || rawData.displayName || rawData.Name || 
+    let name = rawData.name || rawData.displayName || rawData.Name || 
                  `${prefix}${firstName} ${lastName}`.trim() || "Unknown";
+
+    if (prefix && name && !name.startsWith(prefix)) {
+        name = `${prefix}${name}`;
+    }
 
     let updatedAt = rawData.updatedAt || null;
     if (updatedAt && typeof updatedAt.toDate === 'function') {

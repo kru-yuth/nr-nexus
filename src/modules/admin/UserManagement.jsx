@@ -486,7 +486,7 @@ const UserManagement = () => {
                                                     </div>
                                                     <div className="ml-4 md:ml-5">
                                                         <div className="text-sm md:text-base font-black text-slate-900 group-hover:text-emerald-600 transition-colors leading-tight mb-0.5">
-                                                            {u.prefix ? `${u.prefix}${u.name}` : u.name}
+                                                            {u.name}
                                                         </div>
                                                         <div className="text-[10px] md:text-xs font-bold text-slate-400 tracking-tight">
                                                             {u.email}

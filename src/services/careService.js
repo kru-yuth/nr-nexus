@@ -1001,7 +1001,24 @@ export async function getClassSDQSummary(homeroomClass, schoolYear) {
             where("roles", "array-contains", "student")
         );
         const studentSnap = await getDocs(studentsQuery);
-        const students = studentSnap.docs.map(d => normalizeUserData(d.id, d.data()));
+        const mergedMap = {};
+        studentSnap.docs.forEach(docSnap => {
+            const userData = normalizeUserData(docSnap.id, docSnap.data());
+            const email = userData.email;
+            if (!email) {
+                mergedMap[docSnap.id] = userData;
+                return;
+            }
+            if (!mergedMap[email]) {
+                mergedMap[email] = userData;
+            } else {
+                const existing = mergedMap[email];
+                if (userData.uid && !existing.uid) {
+                    mergedMap[email] = userData;
+                }
+            }
+        });
+        const students = Object.values(mergedMap);
 
         const totalStudents = students.length;
 
