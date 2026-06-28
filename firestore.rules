@@ -250,7 +250,7 @@ service cloud.firestore {
     match /sdqTokens/{token} {
       allow get: if exists(/databases/$(database)/documents/sdqTokens/$(token))
                   && resource.data.expiresAt > request.time
-                  && resource.data.usedAt == null;
+                  && resource.data.get('usedAt', null) == null;
       allow list: if request.auth != null && (
         hasRole('admin') ||
         (getUserData() != null && getUserData().get('homeroomClass', '') != '' && resource.data.classId == getUserData().get('homeroomClass', '')) ||
@@ -260,7 +260,7 @@ service cloud.firestore {
       allow update: if (request.auth != null && (hasRole('admin') || hasRole('teacher'))) ||
                     (exists(/databases/$(database)/documents/sdqTokens/$(token)) &&
                      resource.data.expiresAt > request.time &&
-                     resource.data.usedAt == null &&
+                     resource.data.get('usedAt', null) == null &&
                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedAt']) &&
                      request.resource.data.usedAt == request.time);
       allow delete: if request.auth != null && (hasRole('admin') || hasRole('teacher'));
@@ -277,7 +277,7 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         request.auth.uid == resource.data.studentId ||
         (getUserData() != null && getUserData().get('homeroomClass', '') != '' && resource.data.classId == getUserData().get('homeroomClass', '')) ||
-        (resource.data.careCaseId != null &&
+        (resource.data.get('careCaseId', null) != null &&
          canAccessCase(get(/databases/$(database)/documents/careCases/$(resource.data.careCaseId)).data)) ||
         hasRole('admin')
       );
