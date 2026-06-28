@@ -264,7 +264,7 @@ export default function CareCaseDetailPage() {
             setAssessments(assData);
 
             const studentClassId = (student && student.level && student.class) ? `${student.level}/${student.class}` : null;
-            const allAssData = await getStudentSDQAssessments(student.studentId, careCase.schoolYear, studentClassId);
+            const allAssData = await getStudentSDQAssessments(student.id, careCase.schoolYear, studentClassId);
             const unlinked = allAssData.filter(a => !a.careCaseId);
             setUnlinkedAssessments(unlinked);
         } catch (err) {
@@ -378,7 +378,7 @@ export default function CareCaseDetailPage() {
                                                 {isTeacher && (
                                                     <Button 
                                                         variant="ghost" 
-                                                        onClick={() => navigate(`/student-care/sdq/teacher/${student.studentId}?schoolYear=${careCase.schoolYear}`)}
+                                                        onClick={() => navigate(`/student-care/sdq/teacher/${student.id}?schoolYear=${careCase.schoolYear}`)}
                                                         className="text-[10px] py-1.5 px-3 uppercase tracking-wider font-black flex items-center gap-1 shrink-0"
                                                     >
                                                         <span>ดูรายงานละเอียด</span>
@@ -457,7 +457,7 @@ export default function CareCaseDetailPage() {
                         <div className="space-y-3 mt-auto">
                             <Button 
                                 variant="primary"
-                                onClick={() => navigate(`/student-care/sdq/teacher/${student.studentId}?schoolYear=${careCase.schoolYear}`)}
+                                onClick={() => navigate(`/student-care/sdq/teacher/${student.id}?schoolYear=${careCase.schoolYear}`)}
                                 className="w-full flex items-center justify-center gap-2 text-xs py-3 tracking-widest uppercase font-black"
                             >
                                 <span>ทำแบบประเมินโดยครู</span>
