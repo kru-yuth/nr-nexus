@@ -66,9 +66,17 @@ export default function CareCaseDetailPage() {
                     // Fetch student detail to display
                     const studentRef = doc(db, 'users', queryStudentId);
                     const studentSnap = await getDoc(studentRef);
+                    let studentClassId = null;
                     if (studentSnap.exists()) {
-                        setStudent(normalizeUserData(queryStudentId, studentSnap.data()));
+                        const sData = normalizeUserData(queryStudentId, studentSnap.data());
+                        setStudent(sData);
+                        if (sData && sData.level && sData.class) {
+                            studentClassId = `${sData.level}/${sData.class}`;
+                        }
                     }
+                    // Fetch existing assessments for the student (unlinked since no case exists yet)
+                    const allAssData = await getStudentSDQAssessments(queryStudentId, querySchoolYear, studentClassId);
+                    setAssessments(allAssData);
                 } else {
                     // Fetch case
                     const caseRef = doc(db, 'careCases', caseId);
@@ -111,7 +119,7 @@ export default function CareCaseDetailPage() {
         };
 
         loadDetails();
-    }, [caseId, isNew, navigate, queryStudentId]);
+    }, [caseId, isNew, navigate, queryStudentId, querySchoolYear]);
 
     const handleCreateCase = async (e) => {
         if (e) e.preventDefault();
@@ -157,8 +165,8 @@ export default function CareCaseDetailPage() {
         );
     }
 
-    // New Case Mode
-    if (isNew) {
+    // New Case Mode (Only display full screen form if there are no assessments)
+    if (isNew && assessments.length === 0) {
         return (
             <div className="min-h-screen bg-slate-50 pb-20">
                 <Navbar showBack={true} />
@@ -288,7 +296,7 @@ export default function CareCaseDetailPage() {
                         </div>
                         <div>
                             <span className="px-2.5 py-0.5 bg-primary/10 text-primary rounded-full text-[9px] font-black uppercase tracking-wider">
-                                Care Case: {careCase.status.toUpperCase()}
+                                Care Case: {careCase ? careCase.status.toUpperCase() : t('careCase.detail.noCaseYet')}
                             </span>
                             <h1 className="text-xl md:text-2xl font-black text-slate-900 mt-1">
                                 {student?.name || 'Unknown'}
@@ -300,32 +308,34 @@ export default function CareCaseDetailPage() {
                     </div>
 
                     {/* Quick Case status switcher */}
-                    <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
-                        {[
-                            { id: 'active', label: t('careCase.status.active') },
-                            { id: 'resolved', label: t('careCase.status.resolved') },
-                            { id: 'closed', label: t('careCase.status.closed') }
-                        ].map(st => (
-                            <button
-                                key={st.id}
-                                onClick={() => handleUpdateStatus(st.id)}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                                    careCase.status === st.id
-                                        ? 'bg-white text-primary shadow-md font-bold'
-                                        : 'text-slate-400 hover:text-slate-600'
-                                }`}
-                            >
-                                {st.label}
-                            </button>
-                        ))}
-                    </div>
+                    {careCase && (
+                        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+                            {[
+                                { id: 'active', label: t('careCase.status.active') },
+                                { id: 'resolved', label: t('careCase.status.resolved') },
+                                { id: 'closed', label: t('careCase.status.closed') }
+                            ].map(st => (
+                                <button
+                                    key={st.id}
+                                    onClick={() => handleUpdateStatus(st.id)}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                                        careCase.status === st.id
+                                            ? 'bg-white text-primary shadow-md font-bold'
+                                            : 'text-slate-400 hover:text-slate-600'
+                                    }`}
+                                >
+                                    {st.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* 2. Parent Link Generator */}
                 <SDQTokenGenerator 
-                    caseId={caseId} 
-                    studentId={careCase.studentId} 
-                    schoolYear={careCase.schoolYear}
+                    caseId={careCase ? caseId : null} 
+                    studentId={student?.id || queryStudentId} 
+                    schoolYear={careCase ? careCase.schoolYear : querySchoolYear}
                     classId={(student && student.level && student.class) ? `${student.level}/${student.class}` : null}
                 />
 
@@ -339,13 +349,13 @@ export default function CareCaseDetailPage() {
                                     <Activity size={16} />
                                     <span>แบบประเมิน SDQ ที่เสร็จสิ้น</span>
                                 </div>
-                                {careCase && student && (
+                                {student && (
                                     <PDFExportButton 
                                         type="individual"
                                         data={{
                                             studentInfo: student,
                                             sdqAssessments: assessments,
-                                            schoolInfo: { schoolYear: careCase.schoolYear, schoolName: 'โรงเรียนฤทธิณรงค์รอน' }
+                                            schoolInfo: { schoolYear: careCase ? careCase.schoolYear : querySchoolYear, schoolName: 'โรงเรียนฤทธิณรงค์รอน' }
                                         }}
                                         fileName={`${student.name}_SDQ_Report.pdf`}
                                     />
@@ -378,7 +388,7 @@ export default function CareCaseDetailPage() {
                                                 {isTeacher && (
                                                     <Button 
                                                         variant="ghost" 
-                                                        onClick={() => navigate(`/student-care/sdq/teacher/${student.id}?schoolYear=${careCase.schoolYear}`)}
+                                                        onClick={() => navigate(`/student-care/sdq/teacher/${student.id}?schoolYear=${careCase ? careCase.schoolYear : querySchoolYear}`)}
                                                         className="text-[10px] py-1.5 px-3 uppercase tracking-wider font-black flex items-center gap-1 shrink-0"
                                                     >
                                                         <span>ดูรายงานละเอียด</span>
@@ -431,7 +441,7 @@ export default function CareCaseDetailPage() {
                         </div>
 
                         {/* Note area */}
-                        {careCase.notes && (
+                        {careCase?.notes && (
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/50 text-slate-600 text-xs leading-relaxed font-semibold">
                                 <span className="font-black text-[10px] uppercase tracking-wider text-slate-400 block mb-1">
                                     บันทึกของที่ปรึกษา:
@@ -442,40 +452,89 @@ export default function CareCaseDetailPage() {
                     </Card>
 
                     {/* Actions Panel */}
-                    <Card className="p-6 border border-slate-100 flex flex-col justify-between">
-                        <div>
-                            <div className="flex items-center gap-2 mb-6 text-xs font-black uppercase tracking-widest text-slate-400">
-                                <Shield size={16} />
-                                <span>แบบประเมินด่วนสำหรับครู</span>
-                            </div>
-                            
-                            <p className="text-xs text-slate-400 font-semibold leading-relaxed mb-6">
-                                homeroom advisor สามารถประเมินพฤติกรรมเด็กหรือส่งคำขอให้นักเรียนทำแบบประเมินตนเอง
-                            </p>
-                        </div>
-
-                        <div className="space-y-3 mt-auto">
-                            <Button 
-                                variant="primary"
-                                onClick={() => navigate(`/student-care/sdq/teacher/${student.id}?schoolYear=${careCase.schoolYear}`)}
-                                className="w-full flex items-center justify-center gap-2 text-xs py-3 tracking-widest uppercase font-black"
-                            >
-                                <span>ทำแบบประเมินโดยครู</span>
-                                <ExternalLink size={14} />
-                            </Button>
-                            
+                    <div className="space-y-6">
+                        <Card className="p-6 border border-slate-100 flex flex-col justify-between h-fit min-h-[220px]">
                             <div>
+                                <div className="flex items-center gap-2 mb-6 text-xs font-black uppercase tracking-widest text-slate-400">
+                                    <Shield size={16} />
+                                    <span>แบบประเมินด่วนสำหรับครู</span>
+                                </div>
+                                
+                                <p className="text-xs text-slate-400 font-semibold leading-relaxed mb-6">
+                                    homeroom advisor สามารถประเมินพฤติกรรมเด็กหรือส่งคำขอให้นักเรียนทำแบบประเมินตนเอง
+                                </p>
+                            </div>
+
+                            <div className="space-y-3 mt-auto">
                                 <Button 
-                                    variant="secondary"
-                                    onClick={handleCopyStudentLink}
-                                    className="w-full flex items-center justify-center gap-2 text-xs py-3 tracking-widest uppercase font-black hover:bg-slate-100 transition-colors"
+                                    variant="primary"
+                                    onClick={() => navigate(`/student-care/sdq/teacher/${student.id}?schoolYear=${careCase ? careCase.schoolYear : querySchoolYear}`)}
+                                    className="w-full flex items-center justify-center gap-2 text-xs py-3 tracking-widest uppercase font-black"
                                 >
-                                    <span>คัดลอกลิงก์สำหรับนักเรียน</span>
+                                    <span>ทำแบบประเมินโดยครู</span>
                                     <ExternalLink size={14} />
                                 </Button>
+                                
+                                <div>
+                                    <Button 
+                                        variant="secondary"
+                                        onClick={handleCopyStudentLink}
+                                        className="w-full flex items-center justify-center gap-2 text-xs py-3 tracking-widest uppercase font-black hover:bg-slate-100 transition-colors"
+                                    >
+                                        <span>คัดลอกลิงก์สำหรับนักเรียน</span>
+                                        <ExternalLink size={14} />
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
-                    </Card>
+                        </Card>
+
+                        {/* Optional Case Creator Form */}
+                        {!careCase && (
+                            <Card className="p-6 border border-slate-100 space-y-4 bg-primary/5 border-primary/10">
+                                <div className="flex items-center gap-2 text-primary">
+                                    <FolderPlus size={18} />
+                                    <h3 className="text-xs font-black uppercase tracking-widest">เปิดเคสช่วยเหลือ</h3>
+                                </div>
+                                <p className="text-[11px] text-slate-400 font-semibold leading-relaxed">
+                                    หากต้องการติดตามความช่วยเหลือหรือบันทึกข้อมูลเพิ่มเติมอย่างเป็นทางการ สามารถเปิดเคสได้ที่นี่
+                                </p>
+                                <form onSubmit={handleCreateCase} className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">ประเภทเคส</label>
+                                        <select 
+                                            value={newCategory} 
+                                            onChange={(e) => setNewCategory(e.target.value)}
+                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none"
+                                        >
+                                            <option value="behavior">พฤติกรรม</option>
+                                            <option value="academic">วิชาการ</option>
+                                            <option value="family">ครอบครัว</option>
+                                            <option value="health">สุขภาพ</option>
+                                            <option value="other">อื่นๆ</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">บันทึกข้อมูลเพิ่มเติม</label>
+                                        <textarea
+                                            value={newNotes}
+                                            onChange={(e) => setNewNotes(e.target.value)}
+                                            placeholder="ระบุพฤติกรรม อาการ..."
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none placeholder:text-slate-350 resize-none shadow-inner"
+                                        />
+                                    </div>
+                                    <Button 
+                                        type="submit" 
+                                        variant="primary" 
+                                        disabled={isCreating} 
+                                        className="w-full text-[10px] tracking-wider py-2.5 uppercase font-black"
+                                    >
+                                        {isCreating ? 'กำลังบันทึก...' : 'บันทึกเปิดเคส'}
+                                    </Button>
+                                </form>
+                            </Card>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
