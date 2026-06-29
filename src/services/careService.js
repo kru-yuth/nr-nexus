@@ -1142,7 +1142,8 @@ export async function getClassSDQSummary(homeroomClass, schoolYear) {
                 requires9Q,
                 caseId: sCase ? sCase.id : null,
                 riskSubscales,
-                parentLink: tokenMap[s.id] || null
+                parentLink: tokenMap[s.id] || null,
+                byInformant: aggregation.byInformant
             };
         });
 

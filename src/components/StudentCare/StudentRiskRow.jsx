@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../hooks/useAuth';
-import { generateParentSDQToken } from '../../services/careService';
+import { generateParentSDQToken, getTrafficLight } from '../../services/careService';
 import { ChevronRight, HelpCircle, ExternalLink, Link, Copy, Check } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export default function StudentRiskRow({ 
     student, 
     trafficLight = null, 
+    byInformant = null,
     requires9Q = false, 
     onViewDetail,
     onAssess,
@@ -17,34 +18,32 @@ export default function StudentRiskRow({
     const { user: currentUser } = useAuth();
     const [generating, setGenerating] = useState(false);
 
-    // Map traffic light to translation and color styling
-    const getStatusStyle = (light) => {
+    // Helper functions for dots styling and tooltips using translations keys
+    const getDotStyle = (light) => {
         switch (light) {
             case 'red':
-                return {
-                    label: t('careCase.dashboard.riskLevel.attention'),
-                    badgeColor: 'bg-rose-50 text-rose-700 border-rose-100',
-                    dotColor: 'bg-rose-500'
-                };
+                return 'bg-rose-500 border-rose-600';
             case 'yellow':
-                return {
-                    label: t('careCase.dashboard.riskLevel.watch'),
-                    badgeColor: 'bg-amber-50 text-amber-700 border-amber-100',
-                    dotColor: 'bg-amber-500'
-                };
+                return 'bg-amber-500 border-amber-600';
             case 'green':
-                return {
-                    label: t('careCase.dashboard.riskLevel.normal'),
-                    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-                    dotColor: 'bg-emerald-500'
-                };
+                return 'bg-emerald-500 border-emerald-600';
             default:
-                return {
-                    label: t('careCase.dashboard.riskLevel.noData'),
-                    badgeColor: 'bg-slate-50 text-slate-400 border-slate-100',
-                    dotColor: 'bg-slate-300'
-                };
+                return 'bg-slate-200 border-slate-300';
         }
+    };
+
+    const getDotLabel = (light) => {
+        switch (light) {
+            case 'red': return t('careCase.dashboard.riskLevel.attention');
+            case 'yellow': return t('careCase.dashboard.riskLevel.watch');
+            case 'green': return t('careCase.dashboard.riskLevel.normal');
+            default: return t('careCase.dashboard.riskLevel.noData');
+        }
+    };
+
+    const getDotLight = (assessment) => {
+        if (!assessment || !assessment.result) return null;
+        return getTrafficLight(assessment.result.band, assessment.result.requires9Q);
     };
 
     const handleGenerateParentLink = async (e) => {
@@ -76,8 +75,6 @@ export default function StudentRiskRow({
         toast.success("คัดลอกลิงก์ผู้ปกครองสำเร็จ!");
     };
 
-    const status = getStatusStyle(trafficLight);
-
     return (
         <tr 
             onClick={() => onViewDetail && onViewDetail()}
@@ -92,18 +89,6 @@ export default function StudentRiskRow({
                     <div>
                         <div className="font-black text-slate-800 text-sm leading-tight flex flex-wrap items-center gap-2">
                             <span>{student?.name || 'Unknown'}</span>
-                            {student.parentLink && (
-                                <a 
-                                    href={student.parentLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-[10px] text-rose-600 font-bold hover:underline bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-md flex items-center gap-1 ml-1"
-                                >
-                                    <span>ลิงก์ผู้ปกครอง: {student.parentLink}</span>
-                                    <ExternalLink size={10} />
-                                </a>
-                            )}
                             {requires9Q && (
                                 <span className="px-2 py-0.5 bg-rose-50 text-rose-500 rounded text-[9px] font-black uppercase tracking-wider animate-pulse">
                                     {t('careCase.dashboard.nineQ.badge')}
@@ -119,9 +104,24 @@ export default function StudentRiskRow({
 
             {/* Risk Status */}
             <td className="px-6 py-5 text-center">
-                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold ${status.badgeColor}`}>
-                    <span className={`w-2 h-2 rounded-full ${status.dotColor}`} />
-                    <span>{status.label}</span>
+                <div className="flex items-center justify-center gap-3">
+                    <span 
+                        title={`${t('careCase.dashboard.riskLevel.overall')}: ${getDotLabel(trafficLight)}`}
+                        className={`w-4 h-4 rounded-full border-2 shadow-sm ${getDotStyle(trafficLight)} transition-all hover:scale-115`} 
+                    />
+                    <div className="w-[1px] h-4 bg-slate-200" />
+                    <span 
+                        title={`${t('careCase.dashboard.riskLevel.teacher')}: ${getDotLabel(getDotLight(byInformant?.teacher))}`}
+                        className={`w-3.5 h-3.5 rounded-full border ${getDotStyle(getDotLight(byInformant?.teacher))} transition-all hover:scale-115`} 
+                    />
+                    <span 
+                        title={`${t('careCase.dashboard.riskLevel.student')}: ${getDotLabel(getDotLight(byInformant?.student))}`}
+                        className={`w-3.5 h-3.5 rounded-full border ${getDotStyle(getDotLight(byInformant?.student))} transition-all hover:scale-115`} 
+                    />
+                    <span 
+                        title={`${t('careCase.dashboard.riskLevel.parent')}: ${getDotLabel(getDotLight(byInformant?.parent))}`}
+                        className={`w-3.5 h-3.5 rounded-full border ${getDotStyle(getDotLight(byInformant?.parent))} transition-all hover:scale-115`} 
+                    />
                 </div>
             </td>
 
@@ -152,9 +152,10 @@ export default function StudentRiskRow({
                         <button
                             type="button"
                             onClick={handleCopyLink}
-                            className="px-3 py-1.5 bg-rose-100 text-rose-800 hover:bg-rose-200 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-rose-200 shrink-0 cursor-pointer"
+                            title={t('careCase.dashboard.copyParentLink')}
+                            className="p-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg border border-rose-100 transition-colors shrink-0 cursor-pointer flex items-center justify-center"
                         >
-                            <span>คัดลอกลิงก์ผู้ปกครอง</span>
+                            <Copy size={14} />
                         </button>
                     )}
 

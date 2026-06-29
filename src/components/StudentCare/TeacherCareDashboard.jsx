@@ -210,6 +210,45 @@ export default function TeacherCareDashboard() {
                     </div>
                 </div>
 
+                {/* Legend for 4 Dots */}
+                <Card className="p-6 rounded-[2rem] border border-slate-100 shadow-sm mb-8">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div>
+                            <h4 className="text-sm font-black text-slate-800 mb-1">{t('careCase.dashboard.legend.title')}</h4>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{t('careCase.dashboard.legend.subtitle')}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-6 text-xs font-bold text-slate-600">
+                            <div className="flex flex-wrap items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100/50">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">{t('careCase.dashboard.legend.colorLabel')}</span>
+                                <span className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                                    {t('careCase.dashboard.riskLevel.normal')}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                                    {t('careCase.dashboard.riskLevel.watch')}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                                    {t('careCase.dashboard.riskLevel.attention')}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-slate-200 border border-slate-300" />
+                                    {t('careCase.dashboard.riskLevel.noData')}
+                                </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100/50">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">{t('careCase.dashboard.legend.orderLabel')}</span>
+                                <span className="font-black text-slate-800">{t('careCase.dashboard.riskLevel.overall')}</span>
+                                <span className="text-slate-300 font-normal">/</span>
+                                <span>{t('careCase.dashboard.riskLevel.teacher')}</span>
+                                <span>{t('careCase.dashboard.riskLevel.student')}</span>
+                                <span>{t('careCase.dashboard.riskLevel.parent')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+
                 {/* 3. Controls (Filters and Search) */}
                 <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8">
                     <div className="flex flex-col lg:flex-row gap-6 items-center">
@@ -283,6 +322,7 @@ export default function TeacherCareDashboard() {
                                             key={student.studentId}
                                             student={student}
                                             trafficLight={student.trafficLight}
+                                            byInformant={student.byInformant}
                                             requires9Q={student.requires9Q}
                                             onViewDetail={() => handleViewDetail(student)}
                                             onAssess={() => handleAssess(student)}
