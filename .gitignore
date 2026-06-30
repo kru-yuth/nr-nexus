@@ -25,6 +25,10 @@ dist-ssr
 *.sw?
 
 service-account.json
+name-anomalies-report.json
+backfill-dry-run-report.json
+scanNameAnomalies.js
+backfillNameAnomalies.js
 
 # Backups
 backups/

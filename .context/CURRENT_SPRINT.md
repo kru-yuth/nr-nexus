@@ -4,6 +4,10 @@
 - [ ] Migrate components ให้ใช้ Design System
 
 ## เสร็จแล้ว
+- [x] Backfill ข้อมูล name/displayName 51 record ที่มี tab character/double-space ใน Firestore จริง — verify แล้วตรง 100% กับ dry-run, เหลือ duplicate_word 10 รายการที่ยืนยันว่าเป็น false positive จาก regex สแกน ไม่ใช่บัคจริง
+- [x] เพิ่ม Helper sanitizeNameField ใน userService.js เพื่อล้าง Whitespace/Tab character ก่อนดึงข้อมูลไปใช้
+- [x] ปรับปรุง CareCaseDetailPage ให้แสดงประวัติแบบประเมิน SDQ เมื่อเข้าจาก Dashboard โดยไม่ต้องบังคับเปิดเคสก่อน (มีปุ่มเปิดเคสเสริมแทน)
+- [x] แก้รายชื่อนักเรียนซ้ำใน SDQ Dashboard (dedup whitelist+UID docs) + แก้คำนำหน้าชื่อซ้ำใน UserManagement (normalizeUserData เติม prefix ให้ name เสมอ)
 - [x] แก้ไข Firebase error: Missing or insufficient permissions ในหน้า TeacherCareDashboard, TeacherSDQPage, CareCaseDetailPage และ SDQTokenGenerator สำหรับบทบาทคุณครู (และอัปเดตสิทธิ์ sdqTokens ใน rules) - ทดสอบจริงผ่านด้วยนักเรียนจริง 2 คนเรียบร้อยแล้ว
 - [x] แก้ไข Firebase error: Missing or insufficient permissions ในหน้า TeacherCareDashboard โดยการย้ายมาใช้ classId Index และปรับปรุง firestore.rules พร้อมทำ backfill ข้อมูลเก่าทั้งหมด
 - [x] Backfill ข้อมูลครู 10 คน: ปิด task — ข้อมูลถูกต้องครบทั้ง 10 คนแล้ว (ยืนยันจาก dry-run ล่าสุดที่ currentValues = correctedFields ทุกคน) ไม่ต้องรัน --execute (หมายเหตุ: whitelistDocId แบบ random ID ของ peerapat, surapitchaya2569, phatcharaphon2569, aksarapak2569 คือ known legacy pattern ที่มีอยู่แล้ว ไม่ใช่ปัญหาใหม่ ไม่ต้องแก้ไข)
@@ -36,6 +40,9 @@
 
 ## บล็อคอยู่
 (ว่าง)
+
+## Backlog
+- [ ] เพศ (gender) ผิดสำหรับนักเรียนบางคน — มาจากข้อมูล CSV ต้นทางผิด ไม่ใช่บัคโค้ด ต้อง audit เทียบทะเบียนจริงทีหลัง ไม่กระทบ SDQ scoring (ใช้แค่จัดเรียงผล)
 
 ## Test Accounts
 - student.demo@nr.ac.th → student, ม.3/1

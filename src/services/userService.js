@@ -75,21 +75,34 @@ export const derivePrimaryRole = (userData) => {
  * Normalizes raw Firestore data into a consistent user schema.
  * Handles legacy field names (UpperCase) and provides sensible defaults.
  */
+const sanitizeNameField = (str) => {
+    if (typeof str !== "string") return str;
+    return str
+        .replace(/[\u0000-\u001F]/g, " ")  // control chars -> space
+        .replace(/\s{2,}/g, " ")            // collapse multiple spaces
+        .trim();
+};
+
 export const normalizeUserData = (docId, rawData) => {
     if (!rawData) return null;
 
     const email = (rawData.email || rawData.Email || "").toLowerCase().trim();
     const roles = normalizeRoles(rawData);
-    const prefix = (rawData.prefix || rawData.Prefix || rawData.Title || "").toString().trim();
-    const firstName = (rawData.firstName || rawData.FirstName || "").toString().trim();
-    const lastName = (rawData.lastName || rawData.LastName || "").toString().trim();
     
+    // Sanitize raw inputs
+    const prefix = sanitizeNameField(rawData.prefix || rawData.Prefix || rawData.Title || "");
+    const firstName = sanitizeNameField(rawData.firstName || rawData.FirstName || "");
+    const lastName = sanitizeNameField(rawData.lastName || rawData.LastName || "");
+    
+    const rawName = sanitizeNameField(rawData.name || rawData.displayName || rawData.Name || "");
+
     // Construct name if missing, handle all variants
-    let name = rawData.name || rawData.displayName || rawData.Name || 
-                 `${prefix}${firstName} ${lastName}`.trim() || "Unknown";
+    let name = rawName || `${prefix}${firstName} ${lastName}`.trim() || "Unknown";
+    name = sanitizeNameField(name);
 
     if (prefix && name && !name.startsWith(prefix)) {
         name = `${prefix}${name}`;
+        name = sanitizeNameField(name);
     }
 
     let updatedAt = rawData.updatedAt || null;
